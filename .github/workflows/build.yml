@@ -58,15 +58,15 @@ jobs:
       - name: Bootstrap root filesystem
         run: |
           mkdir -p /nova-root
-          debootstrap --components="main contrib nonfree" --arch=amd64 trixie /nova-root http://deb.debian.org/debian
+          debootstrap --components=main,contrib,non-free,non-free-firmware --arch=amd64 trixie /nova-root http://deb.debian.org/debian
 
       - name: Configure APT repositories
         run: |
           cat > /nova-root/etc/apt/sources.list << 'EOF'
-deb http://deb.debian.org/debian trixie main contrib nonfree non-free-firmware
-deb http://deb.debian.org/debian trixie-updates main contrib nonfree non-free-firmware
-deb http://deb.debian.org/debian trixie-security main contrib nonfree non-free-firmware
-EOF
+          deb http://deb.debian.org/debian trixie main contrib non-free non-free-firmware
+          deb http://deb.debian.org/debian trixie-updates main contrib non-free non-free-firmware
+          deb http://deb.debian.org/debian trixie-security main contrib non-free non-free-firmware
+          EOF
 
       - name: Configure hostname
         run: echo "nova" > /nova-root/etc/hostname
