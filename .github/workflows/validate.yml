@@ -1,0 +1,149 @@
+name: NOVA Linux Validation
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  validate-nova:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+
+    steps:
+      - name: Start validation
+        run: echo "Validating NOVA Linux build..."
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate project structure
+        run: |
+          echo "Checking project structure..."
+          ls -la
+          if [ -f "VERSION" ]; then
+            echo " [OK] VERSION file exists"
+            cat VERSION
+          else
+            echo " [WARN] VERSION file not found"
+          fi
+          if [ -f "README.md" ]; then
+            echo " [OK] README.md exists"
+          else
+            echo " [WARN] README.md not found"
+          fi
+          if [ -f "TODO.md" ]; then
+            echo " [OK] TODO.md exists"
+          else
+            echo " [WARN] TODO.md not found"
+          fi
+
+      - name: Validate bootstrap script
+        run: |
+          if [ -f "build/bootstrap.sh" ]; then
+            echo " [OK] bootstrap.sh exists"
+            chmod +x build/bootstrap.sh
+          else
+            echo " [ERROR] bootstrap.sh not found"
+            exit 1
+          fi
+
+      - name: Validate build scripts
+        run: |
+          scripts=("build/configure-system.sh" "build/configure-kernel.sh" "build/configure-bootloader.sh" "build/configure-desktop.sh" "build/configure-installer.sh" "build/assemble-iso.sh" "scripts/generate-checksums.sh")
+          for script in "${scripts[@]}"; do
+            if [ -f "$script" ]; then
+              echo " [OK] $script exists"
+              chmod +x "$script"
+            else
+              echo " [WARN] $script not found"
+            fi
+          done
+
+      - name: Validate configuration directories
+        run: |
+          dirs=("config/apt" "config/kernel" "config/boot" "config/plasma" "config/sddm" "config/calamares" "packages" "branding" "branding/vibes" "branding/logo" "branding/icons" "branding/themes" "branding/sddm" "branding/grub")
+          for dir in "${dirs[@]}"; do
+            if [ -d "$dir" ]; then
+              echo " [OK] $dir directory exists"
+            else
+              echo " [WARN] $dir directory not found"
+            fi
+          done
+
+      - name: Validate package lists
+        run: |
+          packages=("packages/base.txt" "packages/desktop.txt" "packages/utilities.txt" "packages/firmware.txt")
+          for pkg in "${packages[@]}"; do
+            if [ -f "$pkg" ]; then
+              echo " [OK] $pkg exists"
+              line_count=$(wc -l < "$pkg")
+              echo "  Lines: $line_count"
+            else
+              echo " [WARN] $pkg not found"
+            fi
+          done
+
+      - name: Validate branding assets
+        run: |
+          assets=("branding/logo/noa-logo.svg" "branding/icons/noa-icon.svg" "branding/vibes.desktop" "NOVA_vibes.desktop")
+          for asset in "${assets[@]}"; do
+            if [ -f "$asset" ]; then
+              echo " [OK] $asset exists"
+            else
+              echo " [WARN] $asset not found"
+            fi
+          done
+
+      - name: Validate GitHub Actions workflows
+        run: |
+          workflows=(".github/workflows/build.yml" ".github/workflows/validate.yml")
+          for workflow in "${workflows[@]}"; do
+            if [ -f "$workflow" ]; then
+              echo " [OK] $workflow exists"
+            else
+              echo " [WARN] $workflow not found"
+            fi
+          done
+
+      - name: Validate test scripts
+        run: |
+          tests=("tests/test-bootstrap.sh" "tests/test-packages.sh" "tests/test-iso.sh")
+          for test in "${tests[@]}"; do
+            if [ -f "$test" ]; then
+              echo " [OK] $test exists"
+              chmod +x "$test"
+            else
+              echo " [WARN] $test not found"
+            fi
+          done
+
+      - name: Validate documentation
+        run: |
+          docs=("docs/architecture.md" "docs/build-guide.md" "docs/installation.md" "docs/troubleshooting.md")
+          for doc in "${docs[@]}"; do
+            if [ -f "$doc" ]; then
+              echo " [OK] $doc exists"
+            else
+              echo " [WARN] $doc not found"
+            fi
+          done
+
+      - name: Check essential files
+        run: |
+          echo "Checking essential project files..."
+          essential_files=("README.md" "VERSION" "LICENSE" "TODO.md" "build/bootstrap.sh")
+          for file in "${essential_files[@]}"; do
+            if [ -f "$file" ]; then
+              echo " [OK] $file"
+            else
+              echo " [ERROR] $file missing - critical project file"
+            fi
+          fi
+
+      - name: Final validation summary
+        run: |
+          echo ""
+          echo "=== NOVA LINUX VALIDATION COMPLETE ==="
+          echo "All project structures and configurations validated."

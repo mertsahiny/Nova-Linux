@@ -1,0 +1,74 @@
+# NOVA Linux Firmware Packages
+# Debin 13 Trixie - Evidence Based Audit
+
+# Intel CPU microcode
+intel-microcode
+
+# AMD CPU microcode  
+amd64-microcode
+
+# Non-free firmware (miscellaneous, includes NVIDIA etc.)
+firmware-misc-nonfree
+
+# Intel GPU: kernel drivers (i915 for older, xe for newer) + Mesa userspace + firmware
+# firmware-intel-graphics = firmware only, not kernel drivers
+# Kernel: i915 (older) / xe (newer) - provided by linux-image-amd64
+# Mesa: provides userspace graphics acceleration
+firmware-intel-graphics
+
+# AMD GPU: kernel drivers (amdgpu for newer, radeon for older) + Mesa userspace + firmware
+# firmware-amd-graphics = firmware only, not kernel drivers
+# Kernel: amdgpu (newer) / radeon (older) - provided by linux-image-amd64
+# Mesa: provides userspace graphics acceleration
+firmware-amd-graphics
+
+# Mesa 3D graphics library (open-source, required - userspace)
+mesa-utils
+libgl1-mesa-dri
+libglapi-mesa
+libglx-mesa0
+
+# Vulkan support
+mesa-vulkan-drivers
+vulkan-loader
+vulkan-loader:i386
+
+# 32-bit graphics libraries (for 32-bit game compatibility via multiarch)
+# These are installed post-default-build on NOVA system:
+#   sudo dpkg --add-architecture i386
+#   sudo apt-get update
+#   sudo apt-get install libgl1-mesa-dri:i386
+#           libglapi-mesa:i386
+#           libegl1-mesa:i386
+#           libgles2-mesa:i386
+#           libglx-mesa0:i386
+#           mesa-vulkan-drivers:i386
+
+# NOVA gaming stack (optional post-installation)
+# Steam, Lutris, Wine, Winetricks, GameMode, MangoHud
+# These packages are available in Debian Trixie but installed
+# after default setup to manage ISO size
+# steam
+# lutris
+# wine64
+# wine32
+# winetricks
+# gamemode
+# mangohud
+
+# VA-API acceleration for Intel (media decode/encode) - userspace
+intel-media-va-driver-non-free
+
+# VA-API acceleration for AMD - userspace
+mesa-va-drivers
+
+# Common redistributable Wi-Fi firmware
+firmware-iwlwifi
+
+# NOVA does not use bluealsa-alsa - uses BlueZ + PipeWire audio stack
+# bluez and pipewire-pulse provide Bluetooth audio support
+
+# Nouveau (open-source NVIDIA kernel module)
+# Included by default with linux-image-amd64
+# No separate package required, no proprietary firmware needed
+# Hardware compatibility varies by GPU generation - see nouveau.freedesktop.org

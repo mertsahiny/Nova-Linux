@@ -1,0 +1,37 @@
+# NOVA Linux Vibes Wallpaper Collection
+# Version 0.1.0 - Codename: Supernova
+
+# Collection name: VIBES (as required by specification)
+# Do not call the user-facing wallpaper collection "Wallpapers"
+
+# Default wallpaper: Nova Wallpaper
+# Theme: Relaxing futuristic night scene featuring a car, neon lighting and the NOVA logo
+
+# Wallpaper list:
+# - Nova Wallpaper (default) - relaxing futuristic night scene with car and neon lighting
+# - Additional wallpapers can be added later
+
+# KDE Wallpaper Configuration
+# Place wallpapers in: /usr/share/wallpapers/vibes/
+
+[Wallpaper]
+default=nova-wallpaper
+type=Image
+
+[Wallpaper/Nova_Wallpaper]
+file=/usr/share/wallpapers/vibes/Nova_Wallpaper.png
+description=A relaxing futuristic night scene featuring a car, neon lighting and the NOVA logo
+type=Image
+orientation=Default
+
+[Wallpaper/Neon_City_Night]
+file=/usr/share/wallpapers/vibes/Neon_City_Night.jpg
+description=A futuristic neon cityscape at night
+type=Image
+orientation=Default
+
+[Wallpaper/Deep_Space_Jump]
+file=/usr/share/wallpapers/vibes/Deep_Space_Jump.jpg
+description=A deep space exploration scene with stars and nebulae
+type=Image
+orientation=Default

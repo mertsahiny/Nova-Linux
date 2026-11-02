@@ -1,0 +1,233 @@
+name: NOVA Linux Build
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 2 * * 0'
+
+jobs:
+  build-nova:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 240
+    privileges:
+      root: true
+
+    steps:
+      - name: Start progress tracking
+        run: echo "Nova Linux build started"
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Display disk space
+        run: |
+          df -h /
+          free -h
+
+      - name: Install build dependencies
+        run: |
+          apt-get update
+          apt-get install -y \
+            debootstrap \
+            qemu-user-static \
+            kernel-package \
+            libncursesw5 \
+            bison \
+            flex \
+            openssl \
+            libssl-dev \
+            dkms \
+            kpartx \
+            xorriso \
+            grub-efi \
+            grub-common \
+            efibootmgr \
+            NetworkManager \
+            sudo \
+            locales
+
+      - name: Configure APT multi-architecture in NOVA root filesystem
+        run: |
+          echo "Enabling i386 multi-architecture for gaming support in NOVA root filesystem"
+          chroot /nova-root dpkg --add-architecture i386
+          chroot /nova-root apt-get update
+
+      - name: Configure locales
+        run: |
+          locale-gen en_US.UTF-8
+          update-locale LANG=en_US.UTF-8
+
+      - name: Bootstrap root filesystem
+        run: |
+          mkdir -p /nova-root
+          debootstrap --components="main contrib nonfree" --arch=amd64 trixie /nova-root http://deb.debian.org/debian
+
+      - name: Configure APT repositories
+        run: |
+          cat > /nova-root/etc/apt/sources.list << 'EOF'
+deb http://deb.debian.org/debian trixie main contrib nonfree non-free-firmware
+deb http://deb.debian.org/debian trixie-updates main contrib nonfree non-free-firmware
+deb http://deb.debian.org/debian trixie-security main contrib nonfree non-free-firmware
+EOF
+
+      - name: Configure hostname
+        run: echo "nova" > /nova-root/etc/hostname
+
+      - name: Configure locale and timezone
+        run: |
+          ln -sf /usr/share/zoneinfo/UTC /nova-root/etc/localtime
+          echo "UTC" > /nova-root/etc/timezone
+
+      - name: Configure system users and groups
+        run: |
+          useradd -m -G sudo -s /bin/bash nova || true
+          echo "root:novalinux" | chpasswd
+
+- name: Install kernel and microcode
+        run: |
+          apt-get install -y linux-image-amd64 intel-microcode amd64-microcode
+
+- name: Install GPU drivers and firmware
+        run: |
+          echo "Installing open-source Nouveau and Mesa by default"
+          echo "NVIDIA proprietary drivers are optional post-installation"
+
+          # Open-source graphics: Intel and AMD kernel drivers + Mesa
+          # xserver-xorg-video-intel NOT required for modern Intel GPUs
+          # using kernel i915/xe drivers + Mesa userspace + firmware-intel-graphics
+          apt-get install -y \
+            mesa-utils \
+            libgl1-mesa-dri \
+            libglapi-mesa \
+            libglx-mesa0
+
+          # Nouveau is the default open-source NVIDIA driver
+          # It's pulled in as a dependency of linux-image-amd64 and xorg
+          # NVIDIA proprietary drivers are NOT installed during build
+          # They are available as a post-installation configuration option
+          # Users can install them manually after boot if needed:
+          #   sudo apt-get install nvidia-driver nvidia-kernel-dkms
+
+          # Firmware and VA-API packages (matching packages/firmware.txt)
+          apt-get install -y \
+            firmware-misc-nonfree \
+            firmware-iwlwifi \
+            firmware-realtek \
+            firmware-intel-graphics \
+            firmware-amd-graphics \
+            mesa-va-drivers
+      - name: Install GPU drivers and firmware
+        run: |
+          echo "Installing open-source Nouveau and Mesa by default"
+          echo "NVIDIA proprietary drivers are optional post-installation"
+
+          apt-get install -y \
+            xserver-xorg-video-intel \
+            xserver-xorg-video-amd \
+            mesa-utils \
+            libgl1-mesa-dri \
+            libglapi-mesa \
+            libglx-mesa0
+
+          # Nouveau is the default open-source NVIDIA driver
+          # It's pulled in as a dependency of linux-image-amd64 and xorg
+          # NVIDIA proprietary drivers are NOT installed during build
+          # They are available as a post-installation configuration option
+          # Users can install them manually after boot if needed:
+          #   sudo apt-get install nvidia-driver nvidia-kernel-dkms
+
+          apt-get install -y \
+            firmware-misc-nonfree \
+            firmware-iwlwifi \
+            firmware-realtek \
+            bluealsa-alsa \
+            firmware-intel-graphics \
+            libva-driver-amdgpu \
+            firmware-amd-graphics
+      - name: Install kernel and microcode
+        run: |
+          apt-get install -y linux-image-amd64 intel-microcode amd64-microcode
+
+      - name: Install live-boot and configure
+        run: |
+          chroot /nova-root apt-get install -y live-boot
+          # Configure live-boot to look for /casper/filesystem.squashfs
+          # Debian live-boot automatically searches for the casper directory
+          # on the live medium - no LABEL=casper configuration needed
+          # The live-boot package will detect /casper/filesystem.squashfs
+          # automatically if the ISO layout is correct (isolinux + casper directory structure)
+
+      - name: Install GRUB
+        run: |
+          apt-get install -y grub grub-pc grub-efi
+          grub-install /dev/sda
+          update-grub
+
+      - name: Install NetworkManager
+        run: |
+          apt-get install -y network-manager
+
+      - name: Configure systemd
+        run: |
+          apt-get install -y systemd system-sysv-install
+          systemctl preset-all
+
+      - name: Install KDE Plasma desktop
+        run: |
+          apt-get install -y kde-plasma-desktop sddm
+
+      - name: Apply NOVA branding
+        run: |
+          echo "Applying NOVA branding..."
+          # Placeholder for branding application
+
+      - name: Configure Calamares installer
+        run: |
+          apt-get install -y calamares-cfg-nova
+          # Configure Calamares with NOVA branding
+
+      - name: Generate initramfs
+        run: |
+          chroot /nova-root update-initramfs -u
+
+      - name: Assemble ISO image
+        run: |
+          mkdir -p /nova-iso
+          mkdir -p /nova-iso/BOOT/GRUB2-EFI
+          mkdir -p /nova-iso/isolinux
+
+          # Copy kernel and initramfs
+          cp /nova-root/boot/vmlinuz-* /nova-iso/
+          cp /nova-root/boot/initrd.img-* /nova-iso/
+
+          # Install GRUB to ISO
+          grub-mkrescue -o /nova-nova-0.1.0.iso /nova-iso 2>/dev/null || \
+          genisoimage -b isolinux/isolinux.bin -c isolinux/boot.cat \
+            -no-emul-boot -boot-size -o /nova-nova-0.1.0.iso /nova-iso
+
+      - name: Validate ISO structure
+        run: |
+          if [ -f /nova-nova-0.1.0.iso ]; then
+            echo "ISO created successfully"
+            ls -l /nova-nova-0.1.0.iso
+          else
+            echo "ERROR: ISO creation failed"
+            exit 1
+          fi
+
+      - name: Generate SHA256 checksum
+        run: |
+          sha256sum /nova-nova-0.1.0.iso | tee /nova-nova-0.1.0.sha256
+          if [ -f /nova-nova-0.1.0.sha256 ]; then
+            echo "Checksum generated successfully"
+          else
+            echo "ERROR: Checksum generation failed"
+            exit 1
+          fi
+
+      - name: Upload ISO as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nova-linux-0.1.0
+          path: /nova-nova-0.1.0.iso
+          retention-days: 30
