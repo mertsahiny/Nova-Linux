@@ -80,12 +80,11 @@ jobs:
         run: |
           useradd -m -G sudo -s /bin/bash nova || true
           echo "root:novalinux" | chpasswd
-
-- name: Install kernel and microcode
+      - name: Install kernel and microcode
         run: |
           apt-get install -y linux-image-amd64 intel-microcode amd64-microcode
 
-- name: Install GPU drivers and firmware
+      - name: Install GPU drivers and firmware
         run: |
           echo "Installing open-source Nouveau and Mesa by default"
           echo "NVIDIA proprietary drivers are optional post-installation"
