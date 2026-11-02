@@ -140,7 +140,7 @@ jobs:
             else
               echo " [ERROR] $file missing - critical project file"
             fi
-          fi
+          done
 
       - name: Final validation summary
         run: |
