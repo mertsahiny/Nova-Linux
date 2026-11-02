@@ -9,8 +9,6 @@ jobs:
   build-nova:
     runs-on: ubuntu-22.04
     timeout-minutes: 240
-    privileges:
-      root: true
 
     steps:
       - name: Start progress tracking
