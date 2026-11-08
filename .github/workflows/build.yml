@@ -1,3 +1,4 @@
+
 name: NOVA Linux Build
 
 on:
@@ -12,6 +13,7 @@ jobs:
   build-nova:
     runs-on: ubuntu-22.04
     timeout-minutes: 240
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -40,13 +42,15 @@ jobs:
           test -s "$ISO"
           test -s "$ISO.sha256"
 
-	xorriso -indev "$ISO" -ls /live > "$RUNNER_TEMP/live-files.txt"
+          xorriso -indev "$ISO" -ls /live \
+            > "$RUNNER_TEMP/live-files.txt"
 
-	grep -q 'filesystem.squashfs' "$RUNNER_TEMP/live-files.txt"
+          grep -q 'filesystem.squashfs' "$RUNNER_TEMP/live-files.txt"
 
           xorriso -indev "$ISO" -report_el_torito plain
 
           sha256sum -c "$ISO.sha256"
+
       - name: Upload ISO artifact
         uses: actions/upload-artifact@v4
         with:
