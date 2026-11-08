@@ -55,7 +55,7 @@ apt-get install -y --no-install-recommends \
   systemd-sysv dbus sudo locales ca-certificates curl wget \
   linux-image-amd64 live-boot live-config live-config-systemd \
   network-manager \
-  xserver-xorg sddm kde-plasma-desktop plasma-workspace-wayland \
+  xserver-xorg sddm kde-plasma-desktop \
   dolphin konsole kate systemsettings ark gwenview kcalc discover \
   pipewire pipewire-audio pipewire-pulse wireplumber bluez \
   polkit-kde-agent-1 \
