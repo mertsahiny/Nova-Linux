@@ -40,9 +40,9 @@ jobs:
           test -s "$ISO"
           test -s "$ISO.sha256"
 
-          xorriso -indev "$ISO" -ls /live > out/live-files.txt
+	xorriso -indev "$ISO" -ls /live > "$RUNNER_TEMP/live-files.txt"
 
-          grep -q 'filesystem.squashfs' out/live-files.txt
+	grep -q 'filesystem.squashfs' "$RUNNER_TEMP/live-files.txt"
 
           xorriso -indev "$ISO" -report_el_torito plain
 
