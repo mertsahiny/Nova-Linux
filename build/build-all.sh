@@ -23,42 +23,30 @@ done
 
 cleanup() {
     set +e
-
     for mountpoint in \
         "$ROOTFS/dev/pts" \
         "$ROOTFS/dev" \
         "$ROOTFS/proc" \
-        "$ROOTFS/sys" \
-        "$ROOTFS/run"; do
-
+        "$ROOTFS/sys"; do
         if mountpoint -q "$mountpoint"; then
             umount -lf "$mountpoint"
         fi
     done
 }
-
 trap cleanup EXIT
 
 echo "==> Cleaning previous build"
-
 rm -rf "$ROOTFS" "$ISO_ROOT"
-
-mkdir -p \
-    "$ROOTFS" \
-    "$ISO_ROOT/live" \
-    "$ISO_ROOT/boot/grub" \
-    "$OUT_DIR"
+mkdir -p "$ROOTFS" "$ISO_ROOT/live" "$ISO_ROOT/boot/grub" "$OUT_DIR"
 
 echo "==> Bootstrapping Debian 13 Trixie"
 
 debootstrap \
     --arch="$ARCH" \
     --components=main,contrib,non-free,non-free-firmware \
-    trixie \
-    "$ROOTFS" \
-    "$MIRROR"
+    trixie "$ROOTFS" "$MIRROR"
 
-echo "==> Configuring Debian repositories"
+echo "==> Configuring repositories"
 
 cat > "$ROOTFS/etc/apt/sources.list" <<'EOF'
 deb https://deb.debian.org/debian trixie main contrib non-free non-free-firmware
@@ -66,45 +54,45 @@ deb https://deb.debian.org/debian trixie-updates main contrib non-free non-free-
 deb https://security.debian.org/debian-security trixie-security main contrib non-free non-free-firmware
 EOF
 
-echo "==> Mounting system directories"
+echo "==> Preparing chroot mounts"
 
 mount --bind /dev "$ROOTFS/dev"
 mount --make-rslave "$ROOTFS/dev"
-
 mount --bind /dev/pts "$ROOTFS/dev/pts"
 mount -t proc proc "$ROOTFS/proc"
 mount -t sysfs sysfs "$ROOTFS/sys"
 
-mount --bind /run "$ROOTFS/run"
-mount --make-rslave "$ROOTFS/run"
-
-echo "==> Preparing chroot"
+# Do not bind the host's /run into the chroot.
+mkdir -p "$ROOTFS/run"
+chmod 0755 "$ROOTFS/run"
 
 cat > "$ROOTFS/usr/sbin/policy-rc.d" <<'EOF'
 #!/bin/sh
 exit 101
 EOF
-
 chmod +x "$ROOTFS/usr/sbin/policy-rc.d"
+
+echo "==> Entering Debian chroot"
 
 chroot "$ROOTFS" /bin/bash -e <<'CHROOT'
 export DEBIAN_FRONTEND=noninteractive
 
 echo "==> Updating package lists"
-
 apt-get update
 
-echo "==> Enabling 32-bit architecture"
-
+echo "==> Enabling i386 architecture"
 dpkg --add-architecture i386
 apt-get update
 
-echo "==> Installing OpenRC and replacing systemd"
+echo "==> Installing OpenRC and SysVinit"
 
+# Keep sysusers compatibility for Debian packages such as udev.
+# systemd is not required to be PID 1.
 apt-get --purge --allow-remove-essential install -y \
     --no-install-recommends \
     sysvinit-core \
     openrc \
+    systemd-standalone-sysusers \
     elogind \
     libpam-elogind \
     dbus-x11 \
@@ -116,26 +104,25 @@ apt-get --purge --allow-remove-essential install -y \
     live-config-systemd- \
     libpam-systemd-
 
-echo "==> Checking init-system packages"
-
+echo "==> Checking init packages"
 apt-get check
 
-if dpkg-query -W -f='${Status}' systemd-sysv 2>/dev/null | grep -q "install ok installed"; then
-    echo "ERROR: systemd-sysv is still installed." >&2
-    exit 1
-fi
-
 if ! dpkg-query -W -f='${Status}' openrc 2>/dev/null | grep -q "install ok installed"; then
-    echo "ERROR: OpenRC was not installed." >&2
+    echo "ERROR: OpenRC is not installed." >&2
     exit 1
 fi
 
 if ! dpkg-query -W -f='${Status}' sysvinit-core 2>/dev/null | grep -q "install ok installed"; then
-    echo "ERROR: SysVinit was not installed." >&2
+    echo "ERROR: SysVinit is not installed." >&2
     exit 1
 fi
 
-echo "==> Installing Linux base and live environment"
+if ! dpkg-query -W -f='${Status}' systemd-standalone-sysusers 2>/dev/null | grep -q "install ok installed"; then
+    echo "ERROR: systemd-standalone-sysusers is missing." >&2
+    exit 1
+fi
+
+echo "==> Installing desktop and live system"
 
 apt-get install -y --no-install-recommends \
     dbus \
@@ -170,7 +157,7 @@ apt-get install -y --no-install-recommends \
     calamares-settings-debian \
     squashfs-tools
 
-echo "==> Installing firmware and graphics drivers"
+echo "==> Installing firmware and graphics"
 
 apt-get install -y --no-install-recommends \
     intel-microcode \
@@ -203,18 +190,16 @@ apt-get install -y --no-install-recommends \
     mesa-vulkan-drivers:i386 \
     libvulkan1:i386
 
-echo "==> Configuring NOVA locale"
+echo "==> Configuring locale"
 
 sed -i 's/^# *en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen
-
 locale-gen
 update-locale LANG=en_US.UTF-8
 
-echo "==> Setting hostname"
-
+echo "==> Configuring hostname"
 echo "nova" > /etc/hostname
 
-echo "==> Creating NOVA live user"
+echo "==> Creating live user"
 
 if ! id nova >/dev/null 2>&1; then
     useradd -m -s /bin/bash -G sudo,audio,video,plugdev nova
@@ -223,10 +208,7 @@ fi
 passwd -l nova || true
 
 mkdir -p /etc/sudoers.d
-
-printf 'nova ALL=(ALL) NOPASSWD: ALL\n' \
-    > /etc/sudoers.d/90-nova-live
-
+printf 'nova ALL=(ALL) NOPASSWD: ALL\n' > /etc/sudoers.d/90-nova-live
 chmod 0440 /etc/sudoers.d/90-nova-live
 
 echo "==> Configuring NOVA identity"
@@ -255,10 +237,9 @@ Relogin=false
 Current=breeze
 EOF
 
-echo "==> Configuring NOVA Fastfetch"
+echo "==> Configuring Fastfetch"
 
-mkdir -p /usr/share/fastfetch
-mkdir -p /etc/xdg/fastfetch
+mkdir -p /usr/share/fastfetch /etc/xdg/fastfetch
 
 cat > /usr/share/fastfetch/nova.txt <<'EOF'
              .-=========-.
@@ -308,38 +289,7 @@ EOF
 
 echo "==> Configuring OpenRC"
 
-mkdir -p /etc/runlevels/default
-mkdir -p /etc/runlevels/boot
-mkdir -p /etc/runlevels/shutdown
-
-# Make sure the system uses the intended init executable.
-if [[ ! -x /sbin/init ]]; then
-    echo "ERROR: /sbin/init is missing." >&2
-    exit 1
-fi
-
-# OpenRC manages services while SysVinit remains PID 1.
-if [[ ! -x /sbin/openrc ]]; then
-    echo "ERROR: OpenRC executable is missing." >&2
-    exit 1
-fi
-
-# Enable available services.
-for service in \
-    dbus \
-    elogind \
-    network-manager \
-    sddm; do
-
-    if [[ -x "/etc/init.d/$service" ]]; then
-        echo "Enabling OpenRC service: $service"
-        rc-update add "$service" default || true
-    else
-        echo "NOTICE: No init script found for $service"
-    fi
-done
-
-echo "==> Configuring OpenRC defaults"
+mkdir -p /etc/runlevels/default /etc/runlevels/boot /etc/runlevels/shutdown
 
 cat > /etc/rc.conf <<'EOF'
 rc_logger="YES"
@@ -348,20 +298,35 @@ rc_parallel="NO"
 rc_verbose="YES"
 EOF
 
-echo "==> Configuring live system"
+# Enable services only when their OpenRC init scripts exist.
+for service in dbus elogind NetworkManager sddm; do
+    if [[ -x "/etc/init.d/$service" ]]; then
+        echo "Enabling $service"
+        rc-update add "$service" default || true
+    else
+        echo "NOTICE: No OpenRC init script for $service"
+    fi
+done
 
-mkdir -p /etc/skel
-mkdir -p /home/nova
+echo "==> Checking OpenRC executables"
 
-echo "==> Removing temporary package files"
+if [[ ! -x /sbin/openrc ]]; then
+    echo "ERROR: /sbin/openrc is missing." >&2
+    exit 1
+fi
 
+if [[ ! -x /sbin/init ]]; then
+    echo "ERROR: /sbin/init is missing." >&2
+    exit 1
+fi
+
+echo "==> Cleaning package cache"
 apt-get clean
 rm -rf /var/lib/apt/lists/*
 
 rm -f /usr/sbin/policy-rc.d
 
-echo "==> OpenRC configuration complete"
-
+echo "==> Chroot configuration complete"
 CHROOT
 
 echo "==> Preparing Calamares launcher"
@@ -371,12 +336,10 @@ mkdir -p "$ROOTFS/usr/share/applications"
 CALAMARES_DESKTOP="$ROOTFS/usr/share/applications/calamares-install-debian.desktop"
 
 if [[ -f "$CALAMARES_DESKTOP" ]]; then
-
     cp "$CALAMARES_DESKTOP" \
         "$ROOTFS/usr/share/applications/nova-installer.desktop"
 
-    sed -i \
-        's/^Name=.*/Name=Install NOVA Linux/' \
+    sed -i 's/^Name=.*/Name=Install NOVA Linux/' \
         "$ROOTFS/usr/share/applications/nova-installer.desktop"
 
     mkdir -p "$ROOTFS/home/nova/Desktop"
@@ -384,45 +347,28 @@ if [[ -f "$CALAMARES_DESKTOP" ]]; then
     cp "$ROOTFS/usr/share/applications/nova-installer.desktop" \
         "$ROOTFS/home/nova/Desktop/Install NOVA Linux.desktop"
 
-    chmod +x \
-        "$ROOTFS/home/nova/Desktop/Install NOVA Linux.desktop"
+    chmod +x "$ROOTFS/home/nova/Desktop/Install NOVA Linux.desktop"
 
     NOVA_UID="$(chroot "$ROOTFS" id -u nova)"
     NOVA_GID="$(chroot "$ROOTFS" id -g nova)"
 
-    chown -R "$NOVA_UID:$NOVA_GID" \
-        "$ROOTFS/home/nova"
-
+    chown -R "$NOVA_UID:$NOVA_GID" "$ROOTFS/home/nova"
 else
     echo "ERROR: Debian Calamares desktop entry not found." >&2
     exit 1
 fi
 
-echo "==> Installing NOVA wallpaper"
+echo "==> Installing wallpaper"
 
 if [[ -f "$PWD/Nova Wallpaper.png" ]]; then
-
     install -D -m 0644 \
         "$PWD/Nova Wallpaper.png" \
         "$ROOTFS/usr/share/wallpapers/Vibes/Nova Wallpaper.png"
-
 else
-    echo "NOTICE: Nova Wallpaper.png was not found."
+    echo "NOTICE: Nova Wallpaper.png not found."
 fi
 
-echo "==> Checking init configuration"
-
-if [[ ! -e "$ROOTFS/sbin/init" ]]; then
-    echo "ERROR: No init executable found in root filesystem." >&2
-    exit 1
-fi
-
-if [[ ! -x "$ROOTFS/sbin/openrc" ]]; then
-    echo "ERROR: OpenRC is missing from the root filesystem." >&2
-    exit 1
-fi
-
-echo "==> Building live filesystem"
+echo "==> Building SquashFS"
 
 mksquashfs \
     "$ROOTFS" \
@@ -432,7 +378,7 @@ mksquashfs \
     -noappend \
     -e dev proc sys run tmp
 
-echo "==> Locating kernel and initramfs"
+echo "==> Finding kernel and initramfs"
 
 KERNEL="$(basename "$(find "$ROOTFS/boot" -maxdepth 1 -name 'vmlinuz-*' | sort -V | tail -n1)")"
 INITRD="$(basename "$(find "$ROOTFS/boot" -maxdepth 1 -name 'initrd.img-*' | sort -V | tail -n1)")"
@@ -445,7 +391,7 @@ fi
 cp "$ROOTFS/boot/$KERNEL" "$ISO_ROOT/live/vmlinuz"
 cp "$ROOTFS/boot/$INITRD" "$ISO_ROOT/live/initrd.img"
 
-echo "==> Configuring GRUB"
+echo "==> Writing GRUB configuration"
 
 cat > "$ISO_ROOT/boot/grub/grub.cfg" <<'EOF'
 set timeout=5
@@ -463,10 +409,9 @@ ISO="$OUT_DIR/NOVA-Linux-${VERSION}-amd64.iso"
 
 grub-mkrescue -o "$ISO" "$ISO_ROOT"
 
-echo "==> Generating SHA256 checksum"
-
+echo "==> Creating checksum"
 sha256sum "$ISO" > "$ISO.sha256"
 
-echo "==> Build completed"
+echo "==> NOVA Linux ISO created"
 
 ls -lh "$ISO" "$ISO.sha256"
