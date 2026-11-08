@@ -121,6 +121,7 @@ cat > /usr/share/fastfetch/nova.txt <<'EOF'
           '-._____________.-'
 EOF
 
+mkdir -p /etc/xdg/fastfetch
 cat > /etc/xdg/fastfetch/config.jsonc <<'EOF'
 {
   "$schema": "https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json",
