@@ -1,3 +1,4 @@
+
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
@@ -5,32 +6,59 @@ ROOTFS="${ROOTFS:-/nova-root}"
 ISO_ROOT="${ISO_ROOT:-/nova-iso}"
 OUT_DIR="${OUT_DIR:-$PWD/out}"
 VERSION="${NOVA_VERSION:-0.1.0}"
-ARCH=amd64
+ARCH="amd64"
 MIRROR="${DEBIAN_MIRROR:-https://deb.debian.org/debian}"
 
-if [[ $EUID -ne 0 ]]; then
-  echo "Run this build script as root." >&2
-  exit 1
+if [[ "$EUID" -ne 0 ]]; then
+    echo "ERROR: Run this build script as root." >&2
+    exit 1
 fi
 
 for cmd in debootstrap chroot mksquashfs grub-mkrescue xorriso; do
-  command -v "$cmd" >/dev/null || { echo "Missing host dependency: $cmd" >&2; exit 1; }
+    command -v "$cmd" >/dev/null 2>&1 || {
+        echo "ERROR: Missing host dependency: $cmd" >&2
+        exit 1
+    }
 done
 
 cleanup() {
-  set +e
-  for mountpoint in "$ROOTFS/dev/pts" "$ROOTFS/dev" "$ROOTFS/proc" "$ROOTFS/sys" "$ROOTFS/run"; do
-    mountpoint -q "$mountpoint" && umount -lf "$mountpoint"
-  done
+    set +e
+
+    for mountpoint in \
+        "$ROOTFS/dev/pts" \
+        "$ROOTFS/dev" \
+        "$ROOTFS/proc" \
+        "$ROOTFS/sys" \
+        "$ROOTFS/run"; do
+
+        if mountpoint -q "$mountpoint"; then
+            umount -lf "$mountpoint"
+        fi
+    done
 }
+
 trap cleanup EXIT
 
+echo "==> Cleaning previous build"
+
 rm -rf "$ROOTFS" "$ISO_ROOT"
-mkdir -p "$ROOTFS" "$ISO_ROOT/live" "$ISO_ROOT/boot/grub" "$OUT_DIR"
+
+mkdir -p \
+    "$ROOTFS" \
+    "$ISO_ROOT/live" \
+    "$ISO_ROOT/boot/grub" \
+    "$OUT_DIR"
 
 echo "==> Bootstrapping Debian 13 Trixie"
-debootstrap --arch="$ARCH" --components=main,contrib,non-free,non-free-firmware \
-  trixie "$ROOTFS" "$MIRROR"
+
+debootstrap \
+    --arch="$ARCH" \
+    --components=main,contrib,non-free,non-free-firmware \
+    trixie \
+    "$ROOTFS" \
+    "$MIRROR"
+
+echo "==> Configuring Debian repositories"
 
 cat > "$ROOTFS/etc/apt/sources.list" <<'EOF'
 deb https://deb.debian.org/debian trixie main contrib non-free non-free-firmware
@@ -38,66 +66,170 @@ deb https://deb.debian.org/debian trixie-updates main contrib non-free non-free-
 deb https://security.debian.org/debian-security trixie-security main contrib non-free non-free-firmware
 EOF
 
+echo "==> Mounting system directories"
+
 mount --bind /dev "$ROOTFS/dev"
 mount --make-rslave "$ROOTFS/dev"
+
+mount --bind /dev/pts "$ROOTFS/dev/pts"
 mount -t proc proc "$ROOTFS/proc"
 mount -t sysfs sysfs "$ROOTFS/sys"
+
 mount --bind /run "$ROOTFS/run"
+mount --make-rslave "$ROOTFS/run"
+
+echo "==> Preparing chroot"
+
+cat > "$ROOTFS/usr/sbin/policy-rc.d" <<'EOF'
+#!/bin/sh
+exit 101
+EOF
+
+chmod +x "$ROOTFS/usr/sbin/policy-rc.d"
 
 chroot "$ROOTFS" /bin/bash -e <<'CHROOT'
 export DEBIAN_FRONTEND=noninteractive
+
+echo "==> Updating package lists"
+
 apt-get update
+
+echo "==> Enabling 32-bit architecture"
+
 dpkg --add-architecture i386
 apt-get update
 
-# Base system, KDE Plasma 6, networking, audio and live environment.
-apt-get install -y --no-install-recommends \
-  systemd-sysv dbus sudo locales ca-certificates curl wget \
-  linux-image-amd64 live-boot live-config live-config-systemd \
-  network-manager \
-  xserver-xorg sddm kde-plasma-desktop \
-  dolphin konsole kate systemsettings ark gwenview kcalc discover \
-  pipewire pipewire-audio pipewire-pulse wireplumber bluez \
-  polkit-kde-agent-1 \
-  firefox-esr fastfetch \
-  calamares calamares-settings-debian \
-  squashfs-tools
+echo "==> Installing OpenRC and replacing systemd"
 
-# Hardware firmware and open graphics stack.
-apt-get install -y --no-install-recommends \
-  intel-microcode amd64-microcode firmware-misc-nonfree \
-  firmware-intel-graphics firmware-amd-graphics firmware-iwlwifi \
-  firmware-realtek mesa-utils libgl1-mesa-dri libglx-mesa0 \
-  mesa-vulkan-drivers libvulkan1 mesa-va-drivers
+apt-get --purge --allow-remove-essential install -y \
+    --no-install-recommends \
+    sysvinit-core \
+    openrc \
+    elogind \
+    libpam-elogind \
+    dbus-x11 \
+    orphan-sysvinit-scripts \
+    live-config \
+    live-config-sysvinit \
+    systemd-sysv- \
+    systemd- \
+    live-config-systemd- \
+    libpam-systemd-
 
-# Gaming stack. i386 was enabled above so Steam/Wine 32-bit dependencies resolve.
-apt-get install -y --no-install-recommends \
-  steam-installer lutris wine wine64 wine32 winetricks \
-  gamemode mangohud \
-  libgl1-mesa-dri:i386 libglx-mesa0:i386 \
-  mesa-vulkan-drivers:i386 libvulkan1:i386
+echo "==> Checking init-system packages"
 
-# Locale, user and NOVA identity.
+apt-get check
+
+if dpkg-query -W -f='${Status}' systemd-sysv 2>/dev/null | grep -q "install ok installed"; then
+    echo "ERROR: systemd-sysv is still installed." >&2
+    exit 1
+fi
+
+if ! dpkg-query -W -f='${Status}' openrc 2>/dev/null | grep -q "install ok installed"; then
+    echo "ERROR: OpenRC was not installed." >&2
+    exit 1
+fi
+
+if ! dpkg-query -W -f='${Status}' sysvinit-core 2>/dev/null | grep -q "install ok installed"; then
+    echo "ERROR: SysVinit was not installed." >&2
+    exit 1
+fi
+
+echo "==> Installing Linux base and live environment"
+
+apt-get install -y --no-install-recommends \
+    dbus \
+    sudo \
+    locales \
+    ca-certificates \
+    curl \
+    wget \
+    linux-image-amd64 \
+    live-boot \
+    network-manager \
+    xserver-xorg \
+    sddm \
+    kde-plasma-desktop \
+    dolphin \
+    konsole \
+    kate \
+    systemsettings \
+    ark \
+    gwenview \
+    kcalc \
+    discover \
+    pipewire \
+    pipewire-audio \
+    pipewire-pulse \
+    wireplumber \
+    bluez \
+    polkit-kde-agent-1 \
+    firefox-esr \
+    fastfetch \
+    calamares \
+    calamares-settings-debian \
+    squashfs-tools
+
+echo "==> Installing firmware and graphics drivers"
+
+apt-get install -y --no-install-recommends \
+    intel-microcode \
+    amd64-microcode \
+    firmware-misc-nonfree \
+    firmware-intel-graphics \
+    firmware-amd-graphics \
+    firmware-iwlwifi \
+    firmware-realtek \
+    mesa-utils \
+    libgl1-mesa-dri \
+    libglx-mesa0 \
+    mesa-vulkan-drivers \
+    libvulkan1 \
+    mesa-va-drivers
+
+echo "==> Installing gaming packages"
+
+apt-get install -y --no-install-recommends \
+    steam-installer \
+    lutris \
+    wine \
+    wine64 \
+    wine32 \
+    winetricks \
+    gamemode \
+    mangohud \
+    libgl1-mesa-dri:i386 \
+    libglx-mesa0:i386 \
+    mesa-vulkan-drivers:i386 \
+    libvulkan1:i386
+
+echo "==> Configuring NOVA locale"
+
 sed -i 's/^# *en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen
+
 locale-gen
 update-locale LANG=en_US.UTF-8
+
+echo "==> Setting hostname"
+
 echo "nova" > /etc/hostname
-useradd -m -s /bin/bash -G sudo,audio,video,plugdev nova || true
+
+echo "==> Creating NOVA live user"
+
+if ! id nova >/dev/null 2>&1; then
+    useradd -m -s /bin/bash -G sudo,audio,video,plugdev nova
+fi
+
 passwd -l nova || true
-printf 'nova ALL=(ALL) NOPASSWD: ALL\n' > /etc/sudoers.d/90-nova-live
+
+mkdir -p /etc/sudoers.d
+
+printf 'nova ALL=(ALL) NOPASSWD: ALL\n' \
+    > /etc/sudoers.d/90-nova-live
+
 chmod 0440 /etc/sudoers.d/90-nova-live
 
-# Live session defaults; don't set a shared root password.
-mkdir -p /etc/sddm.conf.d /usr/share/wallpapers/Vibes /usr/share/fastfetch
-cat > /etc/sddm.conf.d/nova.conf <<'EOF'
-[Autologin]
-User=nova
-Session=plasma.desktop
-Relogin=false
-
-[Theme]
-Current=breeze
-EOF
+echo "==> Configuring NOVA identity"
 
 cat > /etc/os-release <<'EOF'
 PRETTY_NAME="NOVA Linux 0.1.0 (Supernova)"
@@ -108,6 +240,25 @@ ID=nova
 ID_LIKE=debian
 VERSION_CODENAME=trixie
 EOF
+
+echo "==> Configuring SDDM"
+
+mkdir -p /etc/sddm.conf.d
+
+cat > /etc/sddm.conf.d/nova.conf <<'EOF'
+[Autologin]
+User=nova
+Session=plasma.desktop
+Relogin=false
+
+[Theme]
+Current=breeze
+EOF
+
+echo "==> Configuring NOVA Fastfetch"
+
+mkdir -p /usr/share/fastfetch
+mkdir -p /etc/xdg/fastfetch
 
 cat > /usr/share/fastfetch/nova.txt <<'EOF'
              .-=========-.
@@ -121,60 +272,180 @@ cat > /usr/share/fastfetch/nova.txt <<'EOF'
           '-._____________.-'
 EOF
 
-mkdir -p /etc/xdg/fastfetch
 cat > /etc/xdg/fastfetch/config.jsonc <<'EOF'
 {
   "$schema": "https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json",
-  "logo": { "type": "file", "source": "/usr/share/fastfetch/nova.txt" },
-  "display": { "separator": "  " },
+  "logo": {
+    "type": "file",
+    "source": "/usr/share/fastfetch/nova.txt"
+  },
+  "display": {
+    "separator": "  "
+  },
   "modules": [
-    "title", "separator", "os", "host", "kernel", "uptime",
-    "packages", "shell", "display", "de", "wm", "terminal",
-    "cpu", "gpu", "memory",
-    { "type": "custom", "format": "OS made by: Mert Şahin Yazgaç." }
+    "title",
+    "separator",
+    "os",
+    "host",
+    "kernel",
+    "uptime",
+    "packages",
+    "shell",
+    "display",
+    "de",
+    "wm",
+    "terminal",
+    "cpu",
+    "gpu",
+    "memory",
+    {
+      "type": "custom",
+      "format": "OS made by: Mert Şahin Yazgaç."
+    }
   ]
 }
 EOF
 
-# Make the live user convenient without enabling a dangerous default password.
-mkdir -p /etc/skel
-systemctl enable NetworkManager sddm
-apt-get clean
-rm -rf /var/lib/apt/lists/*
-CHROOT
+echo "==> Configuring OpenRC"
 
-echo "==> Preparing Calamares settings"
-# Debian's settings package supplies its own working distro configuration.
-# Add a NOVA launcher only when the package's desktop entry exists.
-mkdir -p "$ROOTFS/usr/share/applications"
-CALAMARES_DESKTOP="$ROOTFS/usr/share/applications/calamares-install-debian.desktop"
-if [[ -f "$CALAMARES_DESKTOP" ]]; then
-  cp "$CALAMARES_DESKTOP" "$ROOTFS/usr/share/applications/nova-installer.desktop"
-  sed -i 's/^Name=.*/Name=Install NOVA Linux/' "$ROOTFS/usr/share/applications/nova-installer.desktop"
-  mkdir -p "$ROOTFS/home/nova/Desktop"
-  cp "$ROOTFS/usr/share/applications/nova-installer.desktop" "$ROOTFS/home/nova/Desktop/Install NOVA Linux.desktop"
-  chmod +x "$ROOTFS/home/nova/Desktop/Install NOVA Linux.desktop"
-  chown -R 1000:1000 "$ROOTFS/home/nova/Desktop"
-else
-  echo "ERROR: Debian Calamares desktop entry not found." >&2
-  exit 1
+mkdir -p /etc/runlevels/default
+mkdir -p /etc/runlevels/boot
+mkdir -p /etc/runlevels/shutdown
+
+# Make sure the system uses the intended init executable.
+if [[ ! -x /sbin/init ]]; then
+    echo "ERROR: /sbin/init is missing." >&2
+    exit 1
 fi
 
-# Include the project's own wallpaper in the user-facing Vibes collection.
+# OpenRC manages services while SysVinit remains PID 1.
+if [[ ! -x /sbin/openrc ]]; then
+    echo "ERROR: OpenRC executable is missing." >&2
+    exit 1
+fi
+
+# Enable available services.
+for service in \
+    dbus \
+    elogind \
+    network-manager \
+    sddm; do
+
+    if [[ -x "/etc/init.d/$service" ]]; then
+        echo "Enabling OpenRC service: $service"
+        rc-update add "$service" default || true
+    else
+        echo "NOTICE: No init script found for $service"
+    fi
+done
+
+echo "==> Configuring OpenRC defaults"
+
+cat > /etc/rc.conf <<'EOF'
+rc_logger="YES"
+rc_log_path="/var/log/rc.log"
+rc_parallel="NO"
+rc_verbose="YES"
+EOF
+
+echo "==> Configuring live system"
+
+mkdir -p /etc/skel
+mkdir -p /home/nova
+
+echo "==> Removing temporary package files"
+
+apt-get clean
+rm -rf /var/lib/apt/lists/*
+
+rm -f /usr/sbin/policy-rc.d
+
+echo "==> OpenRC configuration complete"
+
+CHROOT
+
+echo "==> Preparing Calamares launcher"
+
+mkdir -p "$ROOTFS/usr/share/applications"
+
+CALAMARES_DESKTOP="$ROOTFS/usr/share/applications/calamares-install-debian.desktop"
+
+if [[ -f "$CALAMARES_DESKTOP" ]]; then
+
+    cp "$CALAMARES_DESKTOP" \
+        "$ROOTFS/usr/share/applications/nova-installer.desktop"
+
+    sed -i \
+        's/^Name=.*/Name=Install NOVA Linux/' \
+        "$ROOTFS/usr/share/applications/nova-installer.desktop"
+
+    mkdir -p "$ROOTFS/home/nova/Desktop"
+
+    cp "$ROOTFS/usr/share/applications/nova-installer.desktop" \
+        "$ROOTFS/home/nova/Desktop/Install NOVA Linux.desktop"
+
+    chmod +x \
+        "$ROOTFS/home/nova/Desktop/Install NOVA Linux.desktop"
+
+    NOVA_UID="$(chroot "$ROOTFS" id -u nova)"
+    NOVA_GID="$(chroot "$ROOTFS" id -g nova)"
+
+    chown -R "$NOVA_UID:$NOVA_GID" \
+        "$ROOTFS/home/nova"
+
+else
+    echo "ERROR: Debian Calamares desktop entry not found." >&2
+    exit 1
+fi
+
+echo "==> Installing NOVA wallpaper"
+
 if [[ -f "$PWD/Nova Wallpaper.png" ]]; then
-  install -D -m 0644 "$PWD/Nova Wallpaper.png" \
-    "$ROOTFS/usr/share/wallpapers/Vibes/Nova Wallpaper.png"
+
+    install -D -m 0644 \
+        "$PWD/Nova Wallpaper.png" \
+        "$ROOTFS/usr/share/wallpapers/Vibes/Nova Wallpaper.png"
+
+else
+    echo "NOTICE: Nova Wallpaper.png was not found."
+fi
+
+echo "==> Checking init configuration"
+
+if [[ ! -e "$ROOTFS/sbin/init" ]]; then
+    echo "ERROR: No init executable found in root filesystem." >&2
+    exit 1
+fi
+
+if [[ ! -x "$ROOTFS/sbin/openrc" ]]; then
+    echo "ERROR: OpenRC is missing from the root filesystem." >&2
+    exit 1
 fi
 
 echo "==> Building live filesystem"
-mksquashfs "$ROOTFS" "$ISO_ROOT/live/filesystem.squashfs" -comp xz -b 1M -noappend \
-  -e dev proc sys run tmp
+
+mksquashfs \
+    "$ROOTFS" \
+    "$ISO_ROOT/live/filesystem.squashfs" \
+    -comp xz \
+    -b 1M \
+    -noappend \
+    -e dev proc sys run tmp
+
+echo "==> Locating kernel and initramfs"
 
 KERNEL="$(basename "$(find "$ROOTFS/boot" -maxdepth 1 -name 'vmlinuz-*' | sort -V | tail -n1)")"
 INITRD="$(basename "$(find "$ROOTFS/boot" -maxdepth 1 -name 'initrd.img-*' | sort -V | tail -n1)")"
-[[ -n "$KERNEL" && -n "$INITRD" ]] || { echo "Kernel or initrd not found." >&2; exit 1; }
+
+if [[ -z "$KERNEL" || -z "$INITRD" ]]; then
+    echo "ERROR: Kernel or initramfs not found." >&2
+    exit 1
+fi
+
 cp "$ROOTFS/boot/$KERNEL" "$ISO_ROOT/live/vmlinuz"
 cp "$ROOTFS/boot/$INITRD" "$ISO_ROOT/live/initrd.img"
+
+echo "==> Configuring GRUB"
 
 cat > "$ISO_ROOT/boot/grub/grub.cfg" <<'EOF'
 set timeout=5
@@ -187,9 +458,15 @@ menuentry "NOVA Linux Live" {
 EOF
 
 echo "==> Creating hybrid BIOS/UEFI ISO"
+
 ISO="$OUT_DIR/NOVA-Linux-${VERSION}-amd64.iso"
+
 grub-mkrescue -o "$ISO" "$ISO_ROOT"
+
+echo "==> Generating SHA256 checksum"
+
 sha256sum "$ISO" > "$ISO.sha256"
 
-echo "==> ISO created:"
+echo "==> Build completed"
+
 ls -lh "$ISO" "$ISO.sha256"
