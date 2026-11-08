@@ -33,7 +33,7 @@ jobs:
           sudo mkdir -p out
           sudo env NOVA_VERSION="$(cat VERSION)" bash build/build-all.sh
 
-     - name: Validate ISO structure
+      - name: Validate ISO structure
         run: |
           ISO="out/NOVA-Linux-$(cat VERSION)-amd64.iso"
 
@@ -43,10 +43,12 @@ jobs:
           mkdir -p out/iso-check
           xorriso -osirrox on -indev "$ISO" \
             -extract /live/filesystem.squashfs out/iso-					check/filesystem.squashfs
-          test -s out/iso-check/filesystem.squashfs
-          xorriso -indev "$ISO" -report_el_torito plain
-          sha256sum -c "$ISO.sha256"
 
+          test -s out/iso-check/filesystem.squashfs
+
+          xorriso -indev "$ISO" -report_el_torito plain
+
+          sha256sum -c "$ISO.sha256"
       - name: Upload ISO artifact
         uses: actions/upload-artifact@v4
         with:
