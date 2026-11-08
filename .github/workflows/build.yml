@@ -35,11 +35,17 @@ jobs:
 
       - name: Validate ISO structure
         run: |
-          test -s out/NOVA-Linux-$(cat VERSION)-amd64.iso
-          test -s out/NOVA-Linux-$(cat VERSION)-amd64.iso.sha256
-          xorriso -indev out/NOVA-Linux-$(cat VERSION)-amd64.iso \
-            -find /live -type f -print | grep -q filesystem.squashfs
-          sha256sum -c out/NOVA-Linux-$(cat VERSION)-amd64.iso.sha256
+          ISO="out/NOVA-Linux-$(cat VERSION)-amd64.iso"
+
+          test -s "$ISO"
+          test -s "$ISO.sha256"
+
+          xorriso -indev "$ISO" -find /live -type f -ls \
+            | grep -q filesystem.squashfs
+
+          xorriso -indev "$ISO" -report_el_torito plain
+
+          sha256sum -c "$ISO.sha256"
 
       - name: Upload ISO artifact
         uses: actions/upload-artifact@v4
