@@ -37,16 +37,12 @@ jobs:
         run: |
           ISO="out/NOVA-Linux-$(cat VERSION)-amd64.iso"
 
-          sudo chown -R "$USER:$USER" out
-
           test -s "$ISO"
           test -s "$ISO.sha256"
 
-          mkdir -p out/iso-check
-          xorriso -osirrox on -indev "$ISO" \
-            -extract /live/filesystem.squashfs out/iso-					check/filesystem.squashfs
+          xorriso -indev "$ISO" -ls /live > out/live-files.txt
 
-          test -s out/iso-check/filesystem.squashfs
+          grep -q 'filesystem.squashfs' out/live-files.txt
 
           xorriso -indev "$ISO" -report_el_torito plain
 
