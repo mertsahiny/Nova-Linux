@@ -37,6 +37,8 @@ jobs:
         run: |
           ISO="out/NOVA-Linux-$(cat VERSION)-amd64.iso"
 
+          sudo chown -R "$USER:$USER" out
+
           test -s "$ISO"
           test -s "$ISO.sha256"
 
