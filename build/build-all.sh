@@ -133,6 +133,9 @@ apt-get install -y --no-install-recommends \
     wget \
     linux-image-amd64 \
     live-boot \
+    live-boot-initramfs-tools \
+    initramfs-tools \
+    live-tools \
     network-manager \
     plasma-nm \
     wpasupplicant \
@@ -160,6 +163,7 @@ apt-get install -y --no-install-recommends \
     alsa-utils \
     alsa-ucm-conf \
     plasma-pa \
+    procps \
     bluez \
     polkit-kde-agent-1 \
     firefox-esr \
@@ -315,6 +319,42 @@ apt-get install -y --no-install-recommends \
     libglx-mesa0:i386 \
     mesa-vulkan-drivers:i386 \
     libvulkan1:i386
+
+echo "==> Regenerating initramfs with live-boot support"
+
+# live-boot's initramfs-tools backend is required to find and mount
+# /live/filesystem.squashfs. Rebuild after all live-boot packages are installed.
+kernel_count=0
+for module_dir in /lib/modules/*; do
+    [[ -d "$module_dir" ]] || continue
+    kernel_version="${module_dir##*/}"
+    initrd="/boot/initrd.img-${kernel_version}"
+    if [[ -s "$initrd" ]]; then
+        update-initramfs -u -k "$kernel_version"
+    else
+        update-initramfs -c -k "$kernel_version"
+    fi
+    kernel_count=$((kernel_count + 1))
+done
+
+if [[ "$kernel_count" -eq 0 ]]; then
+    echo "ERROR: No installed kernel modules were found." >&2
+    exit 1
+fi
+
+LIVE_INITRD="$(find /boot -maxdepth 1 -type f -name 'initrd.img-*' | sort -V | tail -n1)"
+if [[ -z "$LIVE_INITRD" || ! -s "$LIVE_INITRD" ]]; then
+    echo "ERROR: No generated initramfs was found." >&2
+    exit 1
+fi
+
+INITRD_CONTENTS="$(lsinitramfs "$LIVE_INITRD")"
+if ! grep -Fxq 'scripts/live' <<<"$INITRD_CONTENTS"; then
+    echo "ERROR: ${LIVE_INITRD} does not contain the live-boot initramfs script." >&2
+    echo "Install live-boot-initramfs-tools and regenerate the initramfs." >&2
+    exit 1
+fi
+echo "Verified live-boot script in ${LIVE_INITRD}"
 
 echo "==> Configuring locale"
 
@@ -548,9 +588,36 @@ rc_parallel="NO"
 rc_verbose="YES"
 EOF
 
-# Debian's NetworkManager package does not always provide an OpenRC service
-# script. Supply one so Wi-Fi is actually brought up in the live session.
-cat > /etc/init.d/NetworkManager <<'NOVA_NETWORKMANAGER_INIT'
+# Provide native OpenRC service scripts instead of relying on Debian's
+# systemd units or SysV compatibility wrappers.
+cat > /etc/init.d/dbus <<'NOVA_DBUS_INIT'
+#!/sbin/openrc-run
+description="D-Bus System Message Bus"
+command="/usr/bin/dbus-daemon"
+command_args="--system --nofork --nopidfile"
+command_background="yes"
+pidfile="/run/dbus-openrc.pid"
+
+start_pre() {
+    checkpath --directory --mode 0755 /run/dbus
+}
+NOVA_DBUS_INIT
+chmod 0755 /etc/init.d/dbus
+
+cat > /etc/init.d/elogind <<'NOVA_ELOGIND_INIT'
+#!/sbin/openrc-run
+description="Elogind seat and session manager"
+command="/usr/libexec/elogind"
+command_args_background="-D"
+pidfile="/run/elogind.pid"
+
+depend() {
+    need dbus
+}
+NOVA_ELOGIND_INIT
+chmod 0755 /etc/init.d/elogind
+
+cat > /etc/init.d/network-manager <<'NOVA_NETWORKMANAGER_INIT'
 #!/sbin/openrc-run
 description="NetworkManager daemon"
 command="/usr/sbin/NetworkManager"
@@ -567,17 +634,49 @@ start_pre() {
     checkpath --directory --mode 0755 /run/NetworkManager
 }
 NOVA_NETWORKMANAGER_INIT
-chmod 0755 /etc/init.d/NetworkManager
+chmod 0755 /etc/init.d/network-manager
 
-# Enable services only when their OpenRC init scripts exist.
-for service in dbus elogind NetworkManager sddm; do
-    if [[ -x "/etc/init.d/$service" ]]; then
-        echo "Enabling $service"
-        rc-update add "$service" default || true
-    else
-        echo "NOTICE: No OpenRC init script for $service"
+cat > /etc/init.d/sddm <<'NOVA_SDDM_INIT'
+#!/sbin/openrc-run
+description="Simple Desktop Display Manager"
+command="/usr/bin/sddm"
+command_background="yes"
+pidfile="/run/sddm-openrc.pid"
+
+depend() {
+    need dbus elogind
+    after localmount
+}
+NOVA_SDDM_INIT
+chmod 0755 /etc/init.d/sddm
+
+for service in dbus elogind network-manager sddm; do
+    if [[ ! -x "/etc/init.d/$service" ]]; then
+        echo "ERROR: Required OpenRC service is missing: $service" >&2
+        exit 1
     fi
+    echo "Enabling $service"
+    rc-update add "$service" default
 done
+
+# A harmless serial marker lets CI prove that the live root switched to
+# SysVinit/OpenRC and reached the default runlevel in a virtual machine.
+cat > /etc/init.d/nova-boot-smoke <<'NOVA_BOOT_SMOKE_INIT'
+#!/sbin/openrc-run
+description="NOVA live boot smoke-test marker"
+
+depend() {
+    after dbus elogind network-manager sddm
+}
+
+start() {
+    ebegin "Marking NOVA live boot complete"
+    printf '%s\\n' "NOVA_BOOT_COMPLETED" > /dev/ttyS0 2>/dev/null || true
+    eend 0
+}
+NOVA_BOOT_SMOKE_INIT
+chmod 0755 /etc/init.d/nova-boot-smoke
+rc-update add nova-boot-smoke default
 
 echo "==> Checking OpenRC executables"
 
@@ -597,8 +696,18 @@ if [[ -z "$INIT_TARGET" || ! -x "$INIT_TARGET" ]]; then
     exit 1
 fi
 
+if ! dpkg-query -S "$INIT_TARGET" 2>/dev/null | grep -q '^sysvinit-core:'; then
+    echo "ERROR: /sbin/init is not owned by sysvinit-core: $INIT_TARGET" >&2
+    exit 1
+fi
+
 if [[ ! -s /etc/inittab ]]; then
     echo "ERROR: /etc/inittab is missing or empty; SysVinit cannot start normally." >&2
+    exit 1
+fi
+
+if ! grep -Eq '^id:[0-6]:initdefault:' /etc/inittab; then
+    echo "ERROR: /etc/inittab has no default runlevel." >&2
     exit 1
 fi
 
@@ -611,6 +720,18 @@ fi
 
 echo "PID 1 executable: $INIT_TARGET"
 echo "SysVinit configuration and shared-library checks passed."
+
+for package in live-boot live-boot-initramfs-tools initramfs-tools live-config live-config-sysvinit; do
+    if ! dpkg-query -W -f='${Status}' "$package" 2>/dev/null | grep -q "install ok installed"; then
+        echo "ERROR: Required live-boot package is not installed: $package" >&2
+        exit 1
+    fi
+done
+
+if [[ ! -x /usr/bin/sddm || ! -x /usr/libexec/elogind || ! -x /usr/sbin/NetworkManager || ! -x /usr/bin/dbus-daemon ]]; then
+    echo "ERROR: One or more required desktop/session/network daemons are missing." >&2
+    exit 1
+fi
 
 echo "==> Cleaning package cache"
 apt-get clean
@@ -741,8 +862,17 @@ cat > "$ISO_ROOT/boot/grub/grub.cfg" <<'EOF'
 set timeout=5
 set default=0
 
+serial --unit=0 --speed=115200 --word=8 --parity=no --stop=1
+terminal_input console serial
+terminal_output console serial
+
 menuentry "NOVA Linux Live" {
-    linux /live/vmlinuz boot=live components quiet splash username=nova hostname=nova
+    linux /live/vmlinuz boot=live components quiet splash username=nova hostname=nova console=tty0 console=ttyS0,115200n8
+    initrd /live/initrd.img
+}
+
+menuentry "NOVA Linux Live (Safe Graphics)" {
+    linux /live/vmlinuz boot=live components nomodeset username=nova hostname=nova console=tty0 console=ttyS0,115200n8
     initrd /live/initrd.img
 }
 EOF
