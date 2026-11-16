@@ -316,9 +316,30 @@ if [[ ! -x /sbin/openrc ]]; then
 fi
 
 if [[ ! -x /sbin/init ]]; then
-    echo "ERROR: /sbin/init is missing." >&2
+    echo "ERROR: /sbin/init is missing or not executable." >&2
     exit 1
 fi
+
+INIT_TARGET="$(readlink -f /sbin/init)"
+if [[ -z "$INIT_TARGET" || ! -x "$INIT_TARGET" ]]; then
+    echo "ERROR: /sbin/init does not resolve to an executable." >&2
+    exit 1
+fi
+
+if [[ ! -s /etc/inittab ]]; then
+    echo "ERROR: /etc/inittab is missing or empty; SysVinit cannot start normally." >&2
+    exit 1
+fi
+
+INIT_DEPS="$(ldd "$INIT_TARGET" 2>&1 || true)"
+if grep -q "not found" <<<"$INIT_DEPS"; then
+    echo "ERROR: PID 1 has missing shared-library dependencies:" >&2
+    printf '%s\\n' "$INIT_DEPS" >&2
+    exit 1
+fi
+
+echo "PID 1 executable: $INIT_TARGET"
+echo "SysVinit configuration and shared-library checks passed."
 
 echo "==> Cleaning package cache"
 apt-get clean
@@ -368,6 +389,43 @@ else
     echo "NOTICE: Nova Wallpaper.png not found."
 fi
 
+echo "==> Preparing live-root mount points"
+
+# The chroot bind mounts must be removed before packaging the root filesystem.
+# Otherwise the build host's /dev, /proc and /sys could leak into the live image.
+cleanup
+
+# Keep the mount-point directories in SquashFS, but never package transient
+# contents from the build host or the chroot.
+mkdir -p "$ROOTFS/dev/pts" "$ROOTFS/proc" "$ROOTFS/sys" "$ROOTFS/run" "$ROOTFS/tmp"
+find "$ROOTFS/dev" -mindepth 1 -maxdepth 1 ! -name pts -exec rm -rf -- {} +
+find "$ROOTFS/dev/pts" -mindepth 1 -delete
+find "$ROOTFS/proc" "$ROOTFS/sys" "$ROOTFS/run" "$ROOTFS/tmp" -mindepth 1 -delete
+chmod 0755 "$ROOTFS/dev" "$ROOTFS/dev/pts" "$ROOTFS/proc" "$ROOTFS/sys" "$ROOTFS/run"
+chmod 1777 "$ROOTFS/tmp"
+
+echo "==> Validating live root before SquashFS"
+
+if [[ ! -x "$ROOTFS/sbin/init" ]]; then
+    echo "ERROR: live root has no executable /sbin/init." >&2
+    exit 1
+fi
+
+if [[ ! -s "$ROOTFS/etc/inittab" ]]; then
+    echo "ERROR: live root has no /etc/inittab." >&2
+    exit 1
+fi
+
+INIT_TARGET="$(chroot "$ROOTFS" readlink -f /sbin/init)"
+if [[ -z "$INIT_TARGET" ]] || ! chroot "$ROOTFS" test -x "$INIT_TARGET"; then
+    echo "ERROR: /sbin/init does not resolve to an executable inside the live root." >&2
+    exit 1
+fi
+
+echo "Live PID 1 target: $INIT_TARGET"
+echo "Live mount-point directories:"
+ls -ld "$ROOTFS/dev" "$ROOTFS/dev/pts" "$ROOTFS/proc" "$ROOTFS/sys" "$ROOTFS/run" "$ROOTFS/tmp"
+
 echo "==> Building SquashFS"
 
 mksquashfs \
@@ -375,8 +433,7 @@ mksquashfs \
     "$ISO_ROOT/live/filesystem.squashfs" \
     -comp xz \
     -b 1M \
-    -noappend \
-    -e dev proc sys run tmp
+    -noappend
 
 echo "==> Finding kernel and initramfs"
 
