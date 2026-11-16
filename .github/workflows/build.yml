@@ -3,6 +3,8 @@ name: NOVA Linux Build
 
 on:
   workflow_dispatch:
+  push:
+    branches: [ main, "fix/live-boot-init" ]
   schedule:
     - cron: "0 2 * * 0"
 
