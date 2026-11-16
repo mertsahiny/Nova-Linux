@@ -494,18 +494,44 @@ echo "==> Configuring NOVA audio autostart"
 mkdir -p /usr/local/bin /etc/xdg/autostart
 cat > /usr/local/bin/nova-audio-session <<'NOVA_AUDIO_SESSION'
 #!/bin/sh
-set -eu
+# Start the PipeWire user services in dependency order and leave diagnostics
+# in the user's cache if the desktop session cannot provide audio.
+set -u
 [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ] || exit 0
 
-if ! pgrep -u "$(id -u)" -x pipewire >/dev/null 2>&1; then
-    pipewire >/dev/null 2>&1 &
+if [ -z "${XDG_RUNTIME_DIR:-}" ] && [ -d "/run/user/$(id -u)" ]; then
+    export XDG_RUNTIME_DIR="/run/user/$(id -u)"
 fi
-sleep 1
+[ -d "${XDG_RUNTIME_DIR:-/nonexistent}" ] || exit 0
+
+mkdir -p "${XDG_CACHE_HOME:-$HOME/.cache}"
+LOG="${XDG_CACHE_HOME:-$HOME/.cache}/nova-audio.log"
+
+if ! pgrep -u "$(id -u)" -x pipewire >/dev/null 2>&1; then
+    pipewire >>"$LOG" 2>&1 &
+fi
+
+# Wait for PipeWire's core socket before starting its session manager and
+# PulseAudio compatibility server.
+attempt=0
+while [ "$attempt" -lt 10 ]; do
+    if pw-cli info 0 >/dev/null 2>&1; then
+        break
+    fi
+    attempt=$((attempt + 1))
+    sleep 1
+done
+
+if ! pw-cli info 0 >/dev/null 2>&1; then
+    echo "PipeWire did not become ready; see this log and the desktop session journal." >>"$LOG"
+    exit 1
+fi
+
 if ! pgrep -u "$(id -u)" -x wireplumber >/dev/null 2>&1; then
-    wireplumber >/dev/null 2>&1 &
+    wireplumber >>"$LOG" 2>&1 &
 fi
 if ! pgrep -u "$(id -u)" -x pipewire-pulse >/dev/null 2>&1; then
-    pipewire-pulse >/dev/null 2>&1 &
+    pipewire-pulse >>"$LOG" 2>&1 &
 fi
 NOVA_AUDIO_SESSION
 chmod 0755 /usr/local/bin/nova-audio-session
@@ -655,24 +681,14 @@ cat > /etc/NetworkManager/conf.d/90-nova-managed.conf <<'NOVA_NETWORKMANAGER_CON
 managed=true
 NOVA_NETWORKMANAGER_CONF
 
-cat > /etc/init.d/network-manager <<'NOVA_NETWORKMANAGER_INIT'
-#!/sbin/openrc-run
-description="NetworkManager daemon"
-command="/usr/sbin/NetworkManager"
-command_args="--no-daemon"
-command_background="yes"
-pidfile="/run/NetworkManager/NetworkManager.pid"
-
-depend() {
-    need dbus
-    use logger
-}
-
-start_pre() {
-    checkpath --directory --mode 0755 /run/NetworkManager
-}
-NOVA_NETWORKMANAGER_INIT
-chmod 0755 /etc/init.d/network-manager
+# Use the NetworkManager OpenRC init script supplied by Debian's
+# orphan-sysvinit-scripts package. Do not replace it with a hand-written
+# backgrounding wrapper: the packaged script handles daemon and pidfile state.
+if [[ ! -x /etc/init.d/network-manager ]]; then
+    echo "ERROR: Debian's NetworkManager OpenRC init script is missing." >&2
+    echo "Check that orphan-sysvinit-scripts was installed." >&2
+    exit 1
+fi
 
 cat > /etc/init.d/sddm <<'NOVA_SDDM_INIT'
 #!/sbin/openrc-run
@@ -820,8 +836,28 @@ if [[ ! -x "$ROOTFS/usr/bin/calamares-install-debian" ]]; then
     exit 1
 fi
 
-# The Debian wrapper uses xhost; install x11-xserver-utils above and make the
-# launch command explicit instead of relying on a copied desktop-file Exec.
+# Launch from Konsole so failures are visible instead of silently disappearing
+# behind a desktop click. The Debian helper still handles X access and pkexec.
+cat > "$ROOTFS/usr/local/bin/nova-installer-launcher" <<'NOVA_INSTALLER_LAUNCHER'
+#!/bin/sh
+set +e
+echo "Starting the NOVA Linux installer..."
+echo "If Calamares does not appear, inspect ~/.cache/nova-installer.log"
+mkdir -p "${XDG_CACHE_HOME:-$HOME/.cache}"
+LOG="${XDG_CACHE_HOME:-$HOME/.cache}/nova-installer.log"
+/usr/bin/calamares-install-debian >>"$LOG" 2>&1
+status=$?
+echo
+echo "Calamares launcher exited with status $status."
+echo "Log: $LOG"
+if [ "$status" -ne 0 ]; then
+    echo "The installer failed. Log follows:"
+    cat "$LOG"
+fi
+exit "$status"
+NOVA_INSTALLER_LAUNCHER
+chmod 0755 "$ROOTFS/usr/local/bin/nova-installer-launcher"
+
 cat > "$ROOTFS/usr/share/applications/nova-installer.desktop" <<'NOVA_INSTALLER_DESKTOP'
 [Desktop Entry]
 Type=Application
@@ -830,8 +866,8 @@ Name=Install NOVA Linux
 GenericName=NOVA Linux Installer
 Comment=Install NOVA Linux on this computer
 Keywords=nova;linux;system;install;installer;
-TryExec=/usr/bin/calamares-install-debian
-Exec=/usr/bin/calamares-install-debian
+TryExec=/usr/bin/konsole
+Exec=/usr/bin/konsole --hold -e /usr/local/bin/nova-installer-launcher
 Icon=nova-installer
 Terminal=false
 StartupNotify=true
