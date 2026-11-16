@@ -31,7 +31,7 @@ required_packages=(
     calamares calamares-settings-debian
     firmware-misc-nonfree firmware-iwlwifi firmware-realtek
     firmware-intel-graphics firmware-amd-graphics
-    mesa-utils libgl1-mesa-dri:amd64 libglx-mesa0 mesa-vulkan-drivers libvulkan1
+    mesa-utils libgl1-mesa-dri:amd64 libglx-mesa0:amd64 mesa-vulkan-drivers:amd64 libvulkan1:amd64 mesa-va-drivers
     steam-installer lutris wine wine64 wine32:i386 winetricks gamemode mangohud
 )
 
@@ -51,6 +51,9 @@ grep -Fxq 'si::sysinit:/sbin/openrc sysinit' "$ROOTFS/etc/inittab" || fail "init
 grep -Fxq 'rc::bootwait:/sbin/openrc boot' "$ROOTFS/etc/inittab" || fail "inittab does not start the OpenRC boot runlevel"
 grep -Fxq 'l3:3:wait:/sbin/openrc default' "$ROOTFS/etc/inittab" || fail "SysV runlevel 3 is not mapped to OpenRC default"
 grep -Fxq 'l2:2:wait:/sbin/openrc nonetwork' "$ROOTFS/etc/inittab" || fail "SysV runlevel 2 is not mapped to OpenRC nonetwork"
+for command in openrc halt reboot shutdown agetty; do
+    [[ -x "$ROOTFS/sbin/$command" || -x "$ROOTFS/usr/sbin/$command" ]] || fail "Required boot command is missing: $command"
+done
 [[ -x "$ROOTFS/sbin/openrc" ]] || fail "OpenRC executable is missing"
 ok "SysVinit PID 1 is mapped to OpenRC's sysinit, boot and default runlevels"
 
@@ -86,7 +89,7 @@ grep -q '^Session=plasmax11.desktop
 echo "=== ALL ROOT FILESYSTEM CHECKS PASSED ==="
  "$ROOTFS/etc/sddm.conf.d/nova.conf" || fail "SDDM is not configured for the X11 Plasma session"
 [[ -s "$ROOTFS/usr/share/xsessions/plasmax11.desktop" ]] || fail "Plasma X11 session desktop file is missing"
-[[ -x "$ROOTFS/usr/bin/kwin_x11" ]] || [[ -x "$ROOTFS/usr/bin/kwin_x11" ]] || fail "KWin X11 executable is missing"
+[[ -x "$ROOTFS/usr/bin/kwin_x11" ]] || fail "KWin X11 executable is missing"
 ok "Audio autostart and NOVA desktop branding are present"
 
 echo "=== ALL ROOT FILESYSTEM CHECKS PASSED ==="
