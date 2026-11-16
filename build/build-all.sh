@@ -759,7 +759,20 @@ start() {
     # interface to become connected so the smoke test checks more than a PID.
     attempt=0
     while [ "$attempt" -lt 45 ]; do
-        if nmcli -t -f TYPE,STATE device status 2>/dev/null | grep -q '^ethernet:connected
+        if nmcli -t -f TYPE,STATE device status 2>/dev/null | grep -q '^ethernet:connected$'; then
+            printf '%s\\n' "NOVA_NETWORK_MANAGER_RUNNING" > /dev/ttyS0 2>/dev/null || true
+            printf '%s\\n' "NOVA_NETWORK_CONNECTED" > /dev/ttyS0 2>/dev/null || true
+            printf '%s\\n' "NOVA_BOOT_COMPLETED" > /dev/ttyS0 2>/dev/null || true
+            eend 0
+            return 0
+        fi
+        attempt=$((attempt + 1))
+        sleep 1
+    done
+    printf '%s\\n' "NOVA_NETWORK_NOT_CONNECTED" > /dev/ttyS0 2>/dev/null || true
+    eend 1 "NetworkManager did not connect the QEMU Ethernet device"
+    return 1
+}
 NOVA_BOOT_SMOKE_INIT
 chmod 0755 /etc/init.d/nova-boot-smoke
 rc-update add nova-boot-smoke default
