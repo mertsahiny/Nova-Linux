@@ -3,7 +3,7 @@ name: NOVA Linux Validation
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
+    branches: [ main, "fix/live-boot-init" ]
   pull_request:
 
 jobs:
