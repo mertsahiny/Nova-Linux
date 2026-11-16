@@ -31,7 +31,7 @@ required_packages=(
     live-config live-config-sysvinit
     linux-image-amd64
     dbus elogind libpam-elogind
-    network-manager wpasupplicant plasma-nm rfkill wireless-regdb
+    network-manager wpasupplicant plasma-nm rfkill wireless-regdb bluez blueman firmware-atheros powerdevil brightnessctl
     sddm sddm-theme-breeze kde-plasma-desktop kwin-x11
     pipewire pipewire-audio pipewire-alsa pipewire-pulse wireplumber
     libspa-0.2-modules alsa-utils alsa-ucm-conf plasma-pa
@@ -64,7 +64,7 @@ for command in openrc halt reboot shutdown agetty; do
 done
 ok "SysVinit PID 1 is mapped to OpenRC's sysinit, boot and default runlevels"
 
-for service in dbus elogind network-manager sddm nova-boot-smoke; do
+for service in dbus elogind nova-laptop-hardware network-manager sddm nova-boot-smoke; do
     [[ -x "$ROOTFS/etc/init.d/$service" ]] || fail "OpenRC service is missing: $service"
     [[ -L "$ROOTFS/etc/runlevels/default/$service" ]] || fail "OpenRC service is not enabled: $service"
 done
@@ -72,7 +72,11 @@ for service in udev cgroups; do
     [[ -x "$ROOTFS/etc/init.d/$service" ]] || fail "Early-boot service script is missing: $service"
     [[ -L "$ROOTFS/etc/runlevels/sysinit/$service" ]] || fail "$service is not enabled in sysinit"
 done
-ok "OpenRC desktop services, udev and cgroups are enabled"
+[[ -x "$ROOTFS/etc/init.d/nova-laptop-hardware" ]] || fail "NOVA laptop hardware service is missing"
+sh -n "$ROOTFS/etc/init.d/nova-laptop-hardware" || fail "NOVA laptop hardware service has invalid shell syntax"
+grep -Fq 'rfkill unblock all' "$ROOTFS/etc/init.d/nova-laptop-hardware" || fail "NOVA does not unblock software radio blocks"
+grep -Fq 'ideapad_laptop ath10k_pci btusb' "$ROOTFS/etc/init.d/nova-laptop-hardware" || fail "NOVA laptop driver modules are not configured"
+ok "OpenRC desktop services, laptop hotkeys, wireless modules, udev and cgroups are enabled"
 
 initrd="$(find "$ROOTFS/boot" -maxdepth 1 -type f -name 'initrd.img-*' | sort -V | tail -n1)"
 [[ -s "$initrd" ]] || fail "No kernel initramfs was generated"
