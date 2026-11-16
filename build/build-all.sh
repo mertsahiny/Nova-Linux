@@ -157,6 +157,402 @@ apt-get install -y --no-install-recommends \
     calamares-settings-debian \
     squashfs-tools
 
+echo "==> Branding Calamares for NOVA"
+
+# Debian's settings package supplies working Calamares modules and install jobs.
+# Reuse those modules, but give Calamares its own NOVA branding component.
+if [[ ! -f /etc/calamares/settings.conf || ! -f /etc/calamares/branding/debian/branding.desc ]]; then
+    echo "ERROR: Debian Calamares settings or branding files are missing." >&2
+    exit 1
+fi
+
+mkdir -p /etc/calamares/branding/nova
+
+cat > /etc/calamares/branding/nova/branding.desc <<'NOVA_BRANDING'
+---
+componentName: NOVA Linux Installer
+welcomeStyleCalamares: true
+welcomeExpandingLogo: true
+windowExpanding: normal
+windowSize: 900px,620px
+windowPlacement: center
+
+strings:
+    productName: NOVA Linux
+    shortProductName: NOVA
+    version: 0.1.0
+    shortVersion: 0.1.0
+    versionedName: NOVA Linux 0.1.0
+    shortVersionedName: NOVA 0.1.0
+    bootloaderEntryName: NOVA Linux
+    productUrl: https://github.com/mertsahiny/Nova-Linux
+    supportUrl: https://github.com/mertsahiny/Nova-Linux/issues
+    knownIssuesUrl: https://github.com/mertsahiny/Nova-Linux/issues
+    releaseNotesUrl: https://github.com/mertsahiny/Nova-Linux/releases
+    donateUrl: https://github.com/mertsahiny/Nova-Linux
+
+sidebar: widget
+navigation: widget
+
+images:
+    productLogo: "nova-logo.svg"
+    productIcon: "nova-logo.svg"
+    productWelcome: "nova-logo.svg"
+
+style:
+    SidebarBackground: "#111827"
+    SidebarText: "#FFFFFF"
+    SidebarTextCurrent: "#FFFFFF"
+    SidebarBackgroundCurrent: "#273449"
+NOVA_BRANDING
+
+cat > /etc/calamares/branding/nova/nova-logo.svg <<'NOVA_LOGO'
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#38bdf8"/>
+      <stop offset="1" stop-color="#6366f1"/>
+    </linearGradient>
+  </defs>
+  <rect x="24" y="24" width="464" height="464" rx="112" fill="#111827"/>
+  <path d="M112 368V144h54l180 151V144h54v224h-52L166 215v153z" fill="url(#g)"/>
+</svg>
+NOVA_LOGO
+
+sed -i 's/^branding: debian$/branding: nova/' /etc/calamares/settings.conf
+
+if ! grep -q '^branding: nova
+
+apt-get install -y --no-install-recommends \
+    intel-microcode \
+    amd64-microcode \
+    firmware-misc-nonfree \
+    firmware-intel-graphics \
+    firmware-amd-graphics \
+    firmware-iwlwifi \
+    firmware-realtek \
+    mesa-utils \
+    libgl1-mesa-dri \
+    libglx-mesa0 \
+    mesa-vulkan-drivers \
+    libvulkan1 \
+    mesa-va-drivers
+
+echo "==> Installing gaming packages"
+
+apt-get install -y --no-install-recommends \
+    steam-installer \
+    lutris \
+    wine \
+    wine64 \
+    wine32 \
+    winetricks \
+    gamemode \
+    mangohud \
+    libgl1-mesa-dri:i386 \
+    libglx-mesa0:i386 \
+    mesa-vulkan-drivers:i386 \
+    libvulkan1:i386
+
+echo "==> Configuring locale"
+
+sed -i 's/^# *en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen
+locale-gen
+update-locale LANG=en_US.UTF-8
+
+echo "==> Configuring hostname"
+echo "nova" > /etc/hostname
+
+echo "==> Creating live user"
+
+if ! id nova >/dev/null 2>&1; then
+    useradd -m -s /bin/bash -G sudo,audio,video,plugdev nova
+fi
+
+passwd -l nova || true
+
+mkdir -p /etc/sudoers.d
+printf 'nova ALL=(ALL) NOPASSWD: ALL\n' > /etc/sudoers.d/90-nova-live
+chmod 0440 /etc/sudoers.d/90-nova-live
+
+echo "==> Configuring NOVA identity"
+
+cat > /etc/os-release <<'EOF'
+PRETTY_NAME="NOVA Linux 0.1.0 (Supernova)"
+NAME="NOVA Linux"
+VERSION_ID="0.1.0"
+VERSION="0.1.0 (Supernova)"
+ID=nova
+ID_LIKE=debian
+VERSION_CODENAME=trixie
+EOF
+
+echo "==> Configuring SDDM"
+
+mkdir -p /etc/sddm.conf.d
+
+cat > /etc/sddm.conf.d/nova.conf <<'EOF'
+[Autologin]
+User=nova
+Session=plasma.desktop
+Relogin=false
+
+[Theme]
+Current=breeze
+EOF
+
+echo "==> Configuring Fastfetch"
+
+mkdir -p /usr/share/fastfetch /etc/xdg/fastfetch
+
+cat > /usr/share/fastfetch/nova.txt <<'EOF'
+             .-=========-.
+          .-'   .---.     '-.
+        .'     /  N  \       '.
+       /      |  O   |         \
+      |       |  V   |          |
+      |       |  A   |          |
+       \       \____/          /
+        '.                   .'
+          '-._____________.-'
+EOF
+
+cat > /etc/xdg/fastfetch/config.jsonc <<'EOF'
+{
+  "$schema": "https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json",
+  "logo": {
+    "type": "file",
+    "source": "/usr/share/fastfetch/nova.txt"
+  },
+  "display": {
+    "separator": "  "
+  },
+  "modules": [
+    "title",
+    "separator",
+    "os",
+    "host",
+    "kernel",
+    "uptime",
+    "packages",
+    "shell",
+    "display",
+    "de",
+    "wm",
+    "terminal",
+    "cpu",
+    "gpu",
+    "memory",
+    {
+      "type": "custom",
+      "format": "OS made by: Mert Şahin Yazgaç."
+    }
+  ]
+}
+EOF
+
+echo "==> Configuring OpenRC"
+
+mkdir -p /etc/runlevels/default /etc/runlevels/boot /etc/runlevels/shutdown
+
+cat > /etc/rc.conf <<'EOF'
+rc_logger="YES"
+rc_log_path="/var/log/rc.log"
+rc_parallel="NO"
+rc_verbose="YES"
+EOF
+
+# Enable services only when their OpenRC init scripts exist.
+for service in dbus elogind NetworkManager sddm; do
+    if [[ -x "/etc/init.d/$service" ]]; then
+        echo "Enabling $service"
+        rc-update add "$service" default || true
+    else
+        echo "NOTICE: No OpenRC init script for $service"
+    fi
+done
+
+echo "==> Checking OpenRC executables"
+
+if [[ ! -x /sbin/openrc ]]; then
+    echo "ERROR: /sbin/openrc is missing." >&2
+    exit 1
+fi
+
+if [[ ! -x /sbin/init ]]; then
+    echo "ERROR: /sbin/init is missing or not executable." >&2
+    exit 1
+fi
+
+INIT_TARGET="$(readlink -f /sbin/init)"
+if [[ -z "$INIT_TARGET" || ! -x "$INIT_TARGET" ]]; then
+    echo "ERROR: /sbin/init does not resolve to an executable." >&2
+    exit 1
+fi
+
+if [[ ! -s /etc/inittab ]]; then
+    echo "ERROR: /etc/inittab is missing or empty; SysVinit cannot start normally." >&2
+    exit 1
+fi
+
+INIT_DEPS="$(ldd "$INIT_TARGET" 2>&1 || true)"
+if grep -q "not found" <<<"$INIT_DEPS"; then
+    echo "ERROR: PID 1 has missing shared-library dependencies:" >&2
+    printf '%s\\n' "$INIT_DEPS" >&2
+    exit 1
+fi
+
+echo "PID 1 executable: $INIT_TARGET"
+echo "SysVinit configuration and shared-library checks passed."
+
+echo "==> Cleaning package cache"
+apt-get clean
+rm -rf /var/lib/apt/lists/*
+
+rm -f /usr/sbin/policy-rc.d
+
+echo "==> Chroot configuration complete"
+CHROOT
+
+echo "==> Preparing Calamares launcher"
+
+mkdir -p "$ROOTFS/usr/share/applications"
+
+CALAMARES_DESKTOP="$ROOTFS/usr/share/applications/calamares-install-debian.desktop"
+
+if [[ -f "$CALAMARES_DESKTOP" ]]; then
+    cp "$CALAMARES_DESKTOP" \
+        "$ROOTFS/usr/share/applications/nova-installer.desktop"
+
+    sed -i \
+        -e 's/^Name=.*/Name=Install NOVA Linux/' \
+        -e 's/^GenericName=.*/GenericName=NOVA Linux Installer/' \
+        -e 's/^Comment=.*/Comment=Install NOVA Linux on this computer/' \
+        -e 's/^Keywords=.*/Keywords=nova;linux;system;install;installer/' \
+        -e 's/^Icon=.*/Icon=nova-installer/' \
+        "$ROOTFS/usr/share/applications/nova-installer.desktop"
+
+    # Supply a NOVA icon and remove Debian's duplicate launcher/autostart icon.
+    install -D -m 0644 \
+        "$ROOTFS/etc/calamares/branding/nova/nova-logo.svg" \
+        "$ROOTFS/usr/share/pixmaps/nova-installer.svg"
+    rm -f "$ROOTFS/usr/share/applications/calamares-install-debian.desktop"
+    rm -f "$ROOTFS/etc/xdg/autostart/calamares-desktop-icon.desktop"
+
+    mkdir -p "$ROOTFS/home/nova/Desktop"
+
+    cp "$ROOTFS/usr/share/applications/nova-installer.desktop" \
+        "$ROOTFS/home/nova/Desktop/Install NOVA Linux.desktop"
+
+    chmod +x "$ROOTFS/home/nova/Desktop/Install NOVA Linux.desktop"
+
+    NOVA_UID="$(chroot "$ROOTFS" id -u nova)"
+    NOVA_GID="$(chroot "$ROOTFS" id -g nova)"
+
+    chown -R "$NOVA_UID:$NOVA_GID" "$ROOTFS/home/nova"
+else
+    echo "ERROR: Debian Calamares desktop entry not found." >&2
+    exit 1
+fi
+
+echo "==> Installing wallpaper"
+
+if [[ -f "$PWD/Nova Wallpaper.png" ]]; then
+    install -D -m 0644 \
+        "$PWD/Nova Wallpaper.png" \
+        "$ROOTFS/usr/share/wallpapers/Vibes/Nova Wallpaper.png"
+else
+    echo "NOTICE: Nova Wallpaper.png not found."
+fi
+
+echo "==> Preparing live-root mount points"
+
+# The chroot bind mounts must be removed before packaging the root filesystem.
+# Otherwise the build host's /dev, /proc and /sys could leak into the live image.
+cleanup
+
+# Keep the mount-point directories in SquashFS, but never package transient
+# contents from the build host or the chroot.
+mkdir -p "$ROOTFS/dev/pts" "$ROOTFS/proc" "$ROOTFS/sys" "$ROOTFS/run" "$ROOTFS/tmp"
+find "$ROOTFS/dev" -mindepth 1 -maxdepth 1 ! -name pts -exec rm -rf -- {} +
+find "$ROOTFS/dev/pts" -mindepth 1 -delete
+find "$ROOTFS/proc" "$ROOTFS/sys" "$ROOTFS/run" "$ROOTFS/tmp" -mindepth 1 -delete
+chmod 0755 "$ROOTFS/dev" "$ROOTFS/dev/pts" "$ROOTFS/proc" "$ROOTFS/sys" "$ROOTFS/run"
+chmod 1777 "$ROOTFS/tmp"
+
+echo "==> Validating live root before SquashFS"
+
+if [[ ! -x "$ROOTFS/sbin/init" ]]; then
+    echo "ERROR: live root has no executable /sbin/init." >&2
+    exit 1
+fi
+
+if [[ ! -s "$ROOTFS/etc/inittab" ]]; then
+    echo "ERROR: live root has no /etc/inittab." >&2
+    exit 1
+fi
+
+INIT_TARGET="$(chroot "$ROOTFS" readlink -f /sbin/init)"
+if [[ -z "$INIT_TARGET" ]] || ! chroot "$ROOTFS" test -x "$INIT_TARGET"; then
+    echo "ERROR: /sbin/init does not resolve to an executable inside the live root." >&2
+    exit 1
+fi
+
+echo "Live PID 1 target: $INIT_TARGET"
+echo "Live mount-point directories:"
+ls -ld "$ROOTFS/dev" "$ROOTFS/dev/pts" "$ROOTFS/proc" "$ROOTFS/sys" "$ROOTFS/run" "$ROOTFS/tmp"
+
+echo "==> Building SquashFS"
+
+mksquashfs \
+    "$ROOTFS" \
+    "$ISO_ROOT/live/filesystem.squashfs" \
+    -comp xz \
+    -b 1M \
+    -noappend
+
+echo "==> Finding kernel and initramfs"
+
+KERNEL="$(basename "$(find "$ROOTFS/boot" -maxdepth 1 -name 'vmlinuz-*' | sort -V | tail -n1)")"
+INITRD="$(basename "$(find "$ROOTFS/boot" -maxdepth 1 -name 'initrd.img-*' | sort -V | tail -n1)")"
+
+if [[ -z "$KERNEL" || -z "$INITRD" ]]; then
+    echo "ERROR: Kernel or initramfs not found." >&2
+    exit 1
+fi
+
+cp "$ROOTFS/boot/$KERNEL" "$ISO_ROOT/live/vmlinuz"
+cp "$ROOTFS/boot/$INITRD" "$ISO_ROOT/live/initrd.img"
+
+echo "==> Writing GRUB configuration"
+
+cat > "$ISO_ROOT/boot/grub/grub.cfg" <<'EOF'
+set timeout=5
+set default=0
+
+menuentry "NOVA Linux Live" {
+    linux /live/vmlinuz boot=live components quiet splash username=nova hostname=nova
+    initrd /live/initrd.img
+}
+EOF
+
+echo "==> Creating hybrid BIOS/UEFI ISO"
+
+ISO="$OUT_DIR/NOVA-Linux-${VERSION}-amd64.iso"
+
+grub-mkrescue -o "$ISO" "$ISO_ROOT"
+
+echo "==> Creating checksum"
+sha256sum "$ISO" > "$ISO.sha256"
+
+echo "==> NOVA Linux ISO created"
+
+ls -lh "$ISO" "$ISO.sha256"
+ /etc/calamares/settings.conf; then
+    echo "ERROR: Calamares did not switch to NOVA branding." >&2
+    exit 1
+fi
+
 echo "==> Installing firmware and graphics"
 
 apt-get install -y --no-install-recommends \
