@@ -754,9 +754,263 @@ start() {
         eend 1 "NetworkManager did not start"
         return 1
     fi
-    printf '%s\\n' "NOVA_NETWORK_MANAGER_RUNNING" > /dev/ttyS0 2>/dev/null || true
-    printf '%s\\n' "NOVA_BOOT_COMPLETED" > /dev/ttyS0 2>/dev/null || true
-    eend 0
+
+    # In CI, QEMU presents an e1000 NIC with user-mode DHCP. Wait for the
+    # interface to become connected so the smoke test checks more than a PID.
+    attempt=0
+    while [ "$attempt" -lt 45 ]; do
+        if nmcli -t -f TYPE,STATE device status 2>/dev/null | grep -q '^ethernet:connected
+NOVA_BOOT_SMOKE_INIT
+chmod 0755 /etc/init.d/nova-boot-smoke
+rc-update add nova-boot-smoke default
+
+echo "==> Checking OpenRC executables"
+
+if [[ ! -x /sbin/openrc ]]; then
+    echo "ERROR: /sbin/openrc is missing." >&2
+    exit 1
+fi
+
+if [[ ! -x /sbin/init ]]; then
+    echo "ERROR: /sbin/init is missing or not executable." >&2
+    exit 1
+fi
+
+INIT_TARGET="$(readlink -f /sbin/init)"
+if [[ -z "$INIT_TARGET" || ! -x "$INIT_TARGET" ]]; then
+    echo "ERROR: /sbin/init does not resolve to an executable." >&2
+    exit 1
+fi
+
+# /sbin/init may be a usr-merged symlink, so checking its dpkg file
+# ownership is unreliable. The sysvinit-core package status was checked above;
+# here we verify that the resolved init target is present and executable.
+
+if [[ ! -s /etc/inittab ]]; then
+    echo "ERROR: /etc/inittab is missing or empty; SysVinit cannot start normally." >&2
+    exit 1
+fi
+
+if ! grep -Eq '^id:[0-6]:initdefault:' /etc/inittab; then
+    echo "ERROR: /etc/inittab has no default runlevel." >&2
+    exit 1
+fi
+
+INIT_DEPS="$(ldd "$INIT_TARGET" 2>&1 || true)"
+if grep -q "not found" <<<"$INIT_DEPS"; then
+    echo "ERROR: PID 1 has missing shared-library dependencies:" >&2
+    printf '%s\n' "$INIT_DEPS" >&2
+    exit 1
+fi
+
+echo "PID 1 executable: $INIT_TARGET"
+echo "SysVinit configuration and shared-library checks passed."
+
+for package in live-boot live-boot-initramfs-tools initramfs-tools live-config live-config-sysvinit; do
+    if ! dpkg-query -W -f='${Status}' "$package" 2>/dev/null | grep -q "install ok installed"; then
+        echo "ERROR: Required live-boot package is not installed: $package" >&2
+        exit 1
+    fi
+done
+
+if [[ ! -x /usr/bin/sddm || ! -x /usr/libexec/elogind || ! -x /usr/sbin/NetworkManager || ! -x /usr/bin/dbus-daemon ]]; then
+    echo "ERROR: One or more required desktop/session/network daemons are missing." >&2
+    exit 1
+fi
+
+echo "==> Cleaning package cache"
+apt-get clean
+rm -rf /var/lib/apt/lists/*
+
+rm -f /usr/sbin/policy-rc.d
+
+echo "==> Chroot configuration complete"
+CHROOT
+
+echo "==> Preparing NOVA Calamares launcher"
+
+mkdir -p "$ROOTFS/usr/share/applications" "$ROOTFS/home/nova/Desktop"
+
+# Keep Debian's live-media helper: it prepares the live fstab, grants the
+# temporary X access needed by root, and starts Calamares through pkexec.
+if [[ ! -x "$ROOTFS/usr/bin/calamares-install-debian" ]]; then
+    echo "ERROR: Debian Calamares live launcher is missing." >&2
+    exit 1
+fi
+
+# Launch from Konsole so failures are visible instead of silently disappearing
+# behind a desktop click. The Debian helper still handles X access and pkexec.
+cat > "$ROOTFS/usr/local/bin/nova-installer-launcher" <<'NOVA_INSTALLER_LAUNCHER'
+#!/bin/sh
+set +e
+echo "Starting the NOVA Linux installer..."
+echo "If Calamares does not appear, inspect ~/.cache/nova-installer.log"
+mkdir -p "${XDG_CACHE_HOME:-$HOME/.cache}"
+LOG="${XDG_CACHE_HOME:-$HOME/.cache}/nova-installer.log"
+/usr/bin/calamares-install-debian >>"$LOG" 2>&1
+status=$?
+echo
+echo "Calamares launcher exited with status $status."
+echo "Log: $LOG"
+if [ "$status" -ne 0 ]; then
+    echo "The installer failed. Log follows:"
+    cat "$LOG"
+fi
+exit "$status"
+NOVA_INSTALLER_LAUNCHER
+chmod 0755 "$ROOTFS/usr/local/bin/nova-installer-launcher"
+
+cat > "$ROOTFS/usr/share/applications/nova-installer.desktop" <<'NOVA_INSTALLER_DESKTOP'
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Install NOVA Linux
+GenericName=NOVA Linux Installer
+Comment=Install NOVA Linux on this computer
+Keywords=nova;linux;system;install;installer;
+TryExec=/usr/bin/konsole
+Exec=/usr/bin/konsole --hold -e /usr/local/bin/nova-installer-launcher
+Icon=nova-installer
+Terminal=false
+StartupNotify=true
+Categories=System;
+NOVA_INSTALLER_DESKTOP
+
+install -D -m 0644 \
+    "$ROOTFS/etc/calamares/branding/nova/nova-logo.svg" \
+    "$ROOTFS/usr/share/pixmaps/nova-installer.svg"
+
+# Remove the Debian-branded launcher and its broken desktop-icon autostart.
+rm -f "$ROOTFS/usr/share/applications/calamares-install-debian.desktop"
+rm -f "$ROOTFS/etc/xdg/autostart/calamares-desktop-icon.desktop"
+
+cp "$ROOTFS/usr/share/applications/nova-installer.desktop" \
+    "$ROOTFS/home/nova/Desktop/Install NOVA Linux.desktop"
+chmod 0755 "$ROOTFS/home/nova/Desktop/Install NOVA Linux.desktop"
+
+NOVA_UID="$(chroot "$ROOTFS" id -u nova)"
+NOVA_GID="$(chroot "$ROOTFS" id -g nova)"
+chown -R "$NOVA_UID:$NOVA_GID" "$ROOTFS/home/nova"
+
+echo "==> Installing wallpaper"
+
+if [[ -f "$PWD/Nova Wallpaper.png" ]]; then
+    install -D -m 0644 \
+        "$PWD/Nova Wallpaper.png" \
+        "$ROOTFS/usr/share/wallpapers/Vibes/Nova Wallpaper.png"
+else
+    echo "NOTICE: Nova Wallpaper.png not found."
+fi
+
+echo "==> Running root filesystem package and boot checks"
+bash "$PWD/tests/test-packages.sh" "$ROOTFS"
+
+echo "==> Preparing live-root mount points"
+
+# The chroot bind mounts must be removed before packaging the root filesystem.
+# Otherwise the build host's /dev, /proc and /sys could leak into the live image.
+cleanup
+
+# Keep the mount-point directories in SquashFS, but never package transient
+# contents from the build host or the chroot.
+mkdir -p "$ROOTFS/dev/pts" "$ROOTFS/proc" "$ROOTFS/sys" "$ROOTFS/run" "$ROOTFS/tmp"
+find "$ROOTFS/dev" -mindepth 1 -maxdepth 1 ! -name pts -exec rm -rf -- {} +
+find "$ROOTFS/dev/pts" -mindepth 1 -delete
+find "$ROOTFS/proc" "$ROOTFS/sys" "$ROOTFS/run" "$ROOTFS/tmp" -mindepth 1 -delete
+chmod 0755 "$ROOTFS/dev" "$ROOTFS/dev/pts" "$ROOTFS/proc" "$ROOTFS/sys" "$ROOTFS/run"
+chmod 1777 "$ROOTFS/tmp"
+
+echo "==> Validating live root before SquashFS"
+
+if [[ ! -x "$ROOTFS/sbin/init" ]]; then
+    echo "ERROR: live root has no executable /sbin/init." >&2
+    exit 1
+fi
+
+if [[ ! -s "$ROOTFS/etc/inittab" ]]; then
+    echo "ERROR: live root has no /etc/inittab." >&2
+    exit 1
+fi
+
+INIT_TARGET="$(chroot "$ROOTFS" readlink -f /sbin/init)"
+if [[ -z "$INIT_TARGET" ]] || ! chroot "$ROOTFS" test -x "$INIT_TARGET"; then
+    echo "ERROR: /sbin/init does not resolve to an executable inside the live root." >&2
+    exit 1
+fi
+
+echo "Live PID 1 target: $INIT_TARGET"
+echo "Live mount-point directories:"
+ls -ld "$ROOTFS/dev" "$ROOTFS/dev/pts" "$ROOTFS/proc" "$ROOTFS/sys" "$ROOTFS/run" "$ROOTFS/tmp"
+
+echo "==> Building SquashFS"
+
+mksquashfs \
+    "$ROOTFS" \
+    "$ISO_ROOT/live/filesystem.squashfs" \
+    -comp xz \
+    -b 1M \
+    -noappend
+
+echo "==> Finding kernel and initramfs"
+
+KERNEL="$(basename "$(find "$ROOTFS/boot" -maxdepth 1 -name 'vmlinuz-*' | sort -V | tail -n1)")"
+INITRD="$(basename "$(find "$ROOTFS/boot" -maxdepth 1 -name 'initrd.img-*' | sort -V | tail -n1)")"
+
+if [[ -z "$KERNEL" || -z "$INITRD" ]]; then
+    echo "ERROR: Kernel or initramfs not found." >&2
+    exit 1
+fi
+
+cp "$ROOTFS/boot/$KERNEL" "$ISO_ROOT/live/vmlinuz"
+cp "$ROOTFS/boot/$INITRD" "$ISO_ROOT/live/initrd.img"
+
+echo "==> Writing GRUB configuration"
+
+cat > "$ISO_ROOT/boot/grub/grub.cfg" <<'EOF'
+set timeout=5
+set default=0
+
+serial --unit=0 --speed=115200 --word=8 --parity=no --stop=1
+terminal_input console serial
+terminal_output console serial
+
+menuentry "NOVA Linux Live" {
+    linux /live/vmlinuz boot=live components quiet splash username=nova hostname=nova console=tty0 console=ttyS0,115200n8
+    initrd /live/initrd.img
+}
+
+menuentry "NOVA Linux Live (Safe Graphics)" {
+    linux /live/vmlinuz boot=live components nomodeset username=nova hostname=nova console=tty0 console=ttyS0,115200n8
+    initrd /live/initrd.img
+}
+EOF
+
+echo "==> Creating hybrid BIOS/UEFI ISO"
+
+ISO="$OUT_DIR/NOVA-Linux-${VERSION}-amd64.iso"
+
+grub-mkrescue -o "$ISO" "$ISO_ROOT"
+
+echo "==> Creating checksum"
+sha256sum "$ISO" > "$ISO.sha256"
+
+echo "==> NOVA Linux ISO created"
+
+ls -lh "$ISO" "$ISO.sha256"
+; then
+            printf '%s\\n' "NOVA_NETWORK_MANAGER_RUNNING" > /dev/ttyS0 2>/dev/null || true
+            printf '%s\\n' "NOVA_NETWORK_CONNECTED" > /dev/ttyS0 2>/dev/null || true
+            printf '%s\\n' "NOVA_BOOT_COMPLETED" > /dev/ttyS0 2>/dev/null || true
+            eend 0
+            return 0
+        fi
+        attempt=$((attempt + 1))
+        sleep 1
+    done
+
+    printf '%s\\n' "NOVA_NETWORK_NOT_CONNECTED" > /dev/ttyS0 2>/dev/null || true
+    eend 1 "NetworkManager did not connect the QEMU Ethernet device"
+    return 1
 }
 NOVA_BOOT_SMOKE_INIT
 chmod 0755 /etc/init.d/nova-boot-smoke
