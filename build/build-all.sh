@@ -153,8 +153,13 @@ apt-get install -y --no-install-recommends \
     discover \
     pipewire \
     pipewire-audio \
+    pipewire-alsa \
     pipewire-pulse \
     wireplumber \
+    libspa-0.2-modules \
+    alsa-utils \
+    alsa-ucm-conf \
+    plasma-pa \
     bluez \
     polkit-kde-agent-1 \
     firefox-esr \
@@ -322,14 +327,16 @@ echo "nova" > /etc/hostname
 
 echo "==> Creating live user"
 
-if ! getent group netdev >/dev/null 2>&1; then
-    groupadd --system netdev
-fi
+for group in netdev audio; do
+    if ! getent group "$group" >/dev/null 2>&1; then
+        groupadd --system "$group"
+    fi
+done
 
 if ! id nova >/dev/null 2>&1; then
     useradd -m -s /bin/bash -G sudo,audio,video,plugdev,netdev nova
 else
-    usermod -aG netdev nova
+    usermod -aG audio,netdev nova
 fi
 
 passwd -l nova || true
@@ -424,6 +431,40 @@ cat > /home/nova/.config/kdeglobals <<'NOVA_USER_KDE_GLOBALS'
 Theme=NOVA
 NOVA_USER_KDE_GLOBALS
 chown -R nova:nova /home/nova/.config
+
+echo "==> Configuring NOVA audio autostart"
+
+# OpenRC does not provide systemd --user socket activation. Start PipeWire
+# components inside the logged-in Plasma session instead.
+mkdir -p /usr/local/bin /etc/xdg/autostart
+cat > /usr/local/bin/nova-audio-session <<'NOVA_AUDIO_SESSION'
+#!/bin/sh
+set -eu
+[ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ] || exit 0
+
+if ! pgrep -u "$(id -u)" -x pipewire >/dev/null 2>&1; then
+    pipewire >/dev/null 2>&1 &
+fi
+sleep 1
+if ! pgrep -u "$(id -u)" -x wireplumber >/dev/null 2>&1; then
+    wireplumber >/dev/null 2>&1 &
+fi
+if ! pgrep -u "$(id -u)" -x pipewire-pulse >/dev/null 2>&1; then
+    pipewire-pulse >/dev/null 2>&1 &
+fi
+NOVA_AUDIO_SESSION
+chmod 0755 /usr/local/bin/nova-audio-session
+
+cat > /etc/xdg/autostart/nova-audio.desktop <<'NOVA_AUDIO_DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=NOVA Audio
+Comment=Start PipeWire audio services for this desktop session
+Exec=/usr/local/bin/nova-audio-session
+Terminal=false
+OnlyShowIn=KDE;
+X-GNOME-Autostart-enabled=true
+NOVA_AUDIO_DESKTOP
 
 echo "==> Configuring Fastfetch"
 
