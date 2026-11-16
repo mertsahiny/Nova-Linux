@@ -625,6 +625,12 @@ echo "==> Configuring OpenRC"
 
 mkdir -p /etc/runlevels/sysinit /etc/runlevels/default /etc/runlevels/boot /etc/runlevels/shutdown
 
+# Debian may enable bootlogs through package defaults, but its legacy bootlogd
+# backend is not configured in this live image. It exits non-zero under OpenRC.
+rc-update del bootlogs boot >/dev/null 2>&1 || true
+rc-update del bootlogs default >/dev/null 2>&1 || true
+rm -f /etc/runlevels/boot/bootlogs /etc/runlevels/default/bootlogs
+
 # udev must be running before desktop and network services. Debian supplies
 # its SysV-compatible service in initscripts; OpenRC can manage it in sysinit.
 if [[ ! -x /etc/init.d/udev ]]; then
@@ -657,7 +663,7 @@ description="D-Bus System Message Bus"
 command="/usr/bin/dbus-daemon"
 command_args="--system --nofork --nopidfile"
 command_background="yes"
-pidfile="/run/dbus-openrc.pid"
+pidfile="/run/dbus/openrc.pid"
 
 start_pre() {
     checkpath --directory --mode 0755 /run/dbus
