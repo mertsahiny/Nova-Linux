@@ -168,6 +168,9 @@ apt-get install -y --no-install-recommends \
     plasma-pa \
     procps \
     bluez \
+    blueman \
+    powerdevil \
+    brightnessctl \
     polkit-kde-agent-1 \
     firefox-esr \
     fastfetch \
@@ -690,6 +693,37 @@ if [[ ! -x /etc/init.d/network-manager ]]; then
     exit 1
 fi
 
+# Laptop platform, Qualcomm Atheros Wi-Fi and Bluetooth kernel support.
+# The V15 G2-ALC uses ideapad_laptop, ath10k_pci (PCI ID 168c:003e),
+# and btusb (Bluetooth USB ID 0cf3:e300). These modules are harmless to
+# attempt on other machines; missing/inapplicable modules are non-fatal.
+cat > /etc/init.d/nova-laptop-hardware <<'NOVA_LAPTOP_HARDWARE'
+#!/sbin/openrc-run
+description="NOVA laptop hotkeys, wireless drivers and radio unblock"
+
+depend() {
+    need udev
+    before network-manager sddm
+}
+
+start() {
+    ebegin "Loading NOVA laptop hardware support"
+    for module in ideapad_laptop ath10k_pci btusb; do
+        if modprobe "$module"; then
+            einfo "Loaded $module (or it is already loaded)"
+        else
+            ewarn "Could not load $module on this hardware; continuing"
+        fi
+    done
+
+    if command -v rfkill >/dev/null 2>&1; then
+        rfkill unblock all || ewarn "Could not clear software radio blocks"
+    fi
+    eend 0
+}
+NOVA_LAPTOP_HARDWARE
+chmod 0755 /etc/init.d/nova-laptop-hardware
+
 cat > /etc/init.d/sddm <<'NOVA_SDDM_INIT'
 #!/sbin/openrc-run
 description="Simple Desktop Display Manager"
@@ -704,7 +738,7 @@ depend() {
 NOVA_SDDM_INIT
 chmod 0755 /etc/init.d/sddm
 
-for service in dbus elogind network-manager sddm; do
+for service in dbus elogind nova-laptop-hardware network-manager sddm; do
     if [[ ! -x "/etc/init.d/$service" ]]; then
         echo "ERROR: Required OpenRC service is missing: $service" >&2
         exit 1
