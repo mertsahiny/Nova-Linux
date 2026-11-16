@@ -25,7 +25,7 @@ required_packages=(
     linux-image-amd64
     dbus elogind libpam-elogind
     network-manager wpasupplicant plasma-nm rfkill wireless-regdb
-    sddm kde-plasma-desktop
+    sddm kde-plasma-desktop kwin-x11
     pipewire pipewire-audio pipewire-alsa pipewire-pulse wireplumber
     libspa-0.2-modules alsa-utils alsa-ucm-conf plasma-pa
     calamares calamares-settings-debian
@@ -46,12 +46,13 @@ init_target="$(chroot "$ROOTFS" readlink -f /sbin/init)"
 chroot "$ROOTFS" test -x "$init_target" || fail "PID 1 target is not executable: $init_target"
 sysvinit_status="$(dpkg-query --admindir="$ROOTFS/var/lib/dpkg" -W -f='${Status}' sysvinit-core 2>/dev/null || true)"
 [[ "$sysvinit_status" == "install ok installed" ]] || fail "sysvinit-core is not installed"
-grep -Eq '^id:[0-6]:initdefault:' "$ROOTFS/etc/inittab" || fail "No default SysVinit runlevel"
-grep -Fq 'si::sysinit:/etc/init.d/rcS' "$ROOTFS/etc/inittab" || fail "inittab does not invoke OpenRC's sysinit hook"
-for script in rc rcS; do
-    [[ -x "$ROOTFS/etc/init.d/$script" ]] || fail "SysVinit/OpenRC integration script is missing: $script"
-done
-ok "SysVinit is installed with valid OpenRC boot hooks"
+grep -Fxq 'id:3:initdefault:' "$ROOTFS/etc/inittab" || fail "OpenRC default runlevel 3 is not selected"
+grep -Fxq 'si::sysinit:/sbin/openrc sysinit' "$ROOTFS/etc/inittab" || fail "inittab does not start OpenRC sysinit"
+grep -Fxq 'rc::bootwait:/sbin/openrc boot' "$ROOTFS/etc/inittab" || fail "inittab does not start the OpenRC boot runlevel"
+grep -Fxq 'l3:3:wait:/sbin/openrc default' "$ROOTFS/etc/inittab" || fail "SysV runlevel 3 is not mapped to OpenRC default"
+grep -Fxq 'l2:2:wait:/sbin/openrc nonetwork' "$ROOTFS/etc/inittab" || fail "SysV runlevel 2 is not mapped to OpenRC nonetwork"
+[[ -x "$ROOTFS/sbin/openrc" ]] || fail "OpenRC executable is missing"
+ok "SysVinit PID 1 is mapped to OpenRC's sysinit, boot and default runlevels"
 
 for service in dbus elogind network-manager sddm nova-boot-smoke; do
     [[ -x "$ROOTFS/etc/init.d/$service" ]] || fail "OpenRC service is missing: $service"
@@ -78,7 +79,14 @@ ok "Calamares helper, branding and desktop launcher are present"
 [[ -x "$ROOTFS/usr/local/bin/nova-audio-session" ]] || fail "NOVA PipeWire session launcher is missing"
 [[ -s "$ROOTFS/etc/xdg/autostart/nova-audio.desktop" ]] || fail "NOVA audio autostart entry is missing"
 [[ -s "$ROOTFS/home/nova/.config/kdeglobals" ]] || fail "NOVA user KDE configuration is missing"
-grep -q '^Theme=NOVA$' "$ROOTFS/home/nova/.config/kdeglobals" || fail "NOVA icon theme is not selected for the live user"
+grep -q '^Theme=NOVA
+echo "=== ALL ROOT FILESYSTEM CHECKS PASSED ==="
+ "$ROOTFS/home/nova/.config/kdeglobals" || fail "NOVA icon theme is not selected for the live user"
+grep -q '^Session=plasmax11.desktop
+echo "=== ALL ROOT FILESYSTEM CHECKS PASSED ==="
+ "$ROOTFS/etc/sddm.conf.d/nova.conf" || fail "SDDM is not configured for the X11 Plasma session"
+[[ -s "$ROOTFS/usr/share/xsessions/plasmax11.desktop" ]] || fail "Plasma X11 session desktop file is missing"
+[[ -x "$ROOTFS/usr/bin/kwin_x11" ]] || [[ -x "$ROOTFS/usr/bin/kwin_x11" ]] || fail "KWin X11 executable is missing"
 ok "Audio autostart and NOVA desktop branding are present"
 
 echo "=== ALL ROOT FILESYSTEM CHECKS PASSED ==="

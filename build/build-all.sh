@@ -147,6 +147,7 @@ apt-get install -y --no-install-recommends \
     xserver-xorg \
     sddm \
     kde-plasma-desktop \
+    kwin-x11 \
     dolphin \
     konsole \
     kate \
@@ -405,7 +406,7 @@ mkdir -p /etc/sddm.conf.d
 cat > /etc/sddm.conf.d/nova.conf <<'EOF'
 [Autologin]
 User=nova
-Session=plasma.desktop
+Session=plasmax11.desktop
 Relogin=false
 
 [Theme]
@@ -676,6 +677,30 @@ for service in dbus elogind network-manager sddm; do
     echo "Enabling $service"
     rc-update add "$service" default
 done
+
+# SysVinit PID 1 with OpenRC's native runlevel integration.
+# OpenRC uses named runlevels, so map the traditional SysV runlevels explicitly.
+cat > /etc/inittab <<'NOVA_INITTAB'
+id:3:initdefault:
+si::sysinit:/sbin/openrc sysinit
+rc::bootwait:/sbin/openrc boot
+l0:0:wait:/sbin/openrc shutdown
+l0s:0:wait:/sbin/halt -d -f -i -p
+l1:1:wait:/sbin/openrc single
+l2:2:wait:/sbin/openrc nonetwork
+l3:3:wait:/sbin/openrc default
+l4:4:wait:/sbin/openrc default
+l5:5:wait:/sbin/openrc default
+l6:6:wait:/sbin/openrc reboot
+l6r:6:wait:/sbin/reboot -d
+ca:12345:ctrlaltdel:/sbin/shutdown -r now
+c1:12345:respawn:/sbin/agetty --noclear 38400 tty1 linux
+c2:2345:respawn:/sbin/agetty 38400 tty2 linux
+c3:2345:respawn:/sbin/agetty 38400 tty3 linux
+c4:2345:respawn:/sbin/agetty 38400 tty4 linux
+c5:2345:respawn:/sbin/agetty 38400 tty5 linux
+c6:2345:respawn:/sbin/agetty 38400 tty6 linux
+NOVA_INITTAB
 
 # A harmless serial marker lets CI prove that the live root switched to
 # SysVinit/OpenRC and reached the default runlevel in a virtual machine.
