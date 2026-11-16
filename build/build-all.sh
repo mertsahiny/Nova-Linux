@@ -705,11 +705,9 @@ if [[ -z "$INIT_TARGET" || ! -x "$INIT_TARGET" ]]; then
     exit 1
 fi
 
-INIT_OWNER="$(dpkg-query -S /sbin/init 2>/dev/null || true)"
-if ! grep -q '^sysvinit-core:' <<<"$INIT_OWNER"; then
-    echo "ERROR: /sbin/init is not provided by sysvinit-core: $INIT_OWNER" >&2
-    exit 1
-fi
+# /sbin/init may be a usr-merged symlink, so checking its dpkg file
+# ownership is unreliable. The sysvinit-core package status was checked above;
+# here we verify that the resolved init target is present and executable.
 
 if [[ ! -s /etc/inittab ]]; then
     echo "ERROR: /etc/inittab is missing or empty; SysVinit cannot start normally." >&2

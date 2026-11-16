@@ -44,8 +44,8 @@ ok "All required boot, desktop, firmware, audio and gaming packages are installe
 init_target="$(chroot "$ROOTFS" readlink -f /sbin/init)"
 [[ -n "$init_target" ]] || fail "/sbin/init does not resolve"
 chroot "$ROOTFS" test -x "$init_target" || fail "PID 1 target is not executable: $init_target"
-init_owner="$(dpkg-query --admindir="$ROOTFS/var/lib/dpkg" -S /sbin/init 2>/dev/null || true)"
-grep -q '^sysvinit-core:' <<<"$init_owner" || fail "/sbin/init is not owned by sysvinit-core"
+sysvinit_status="$(dpkg-query --admindir="$ROOTFS/var/lib/dpkg" -W -f='${Status}' sysvinit-core 2>/dev/null || true)"
+[[ "$sysvinit_status" == "install ok installed" ]] || fail "sysvinit-core is not installed"
 grep -Eq '^id:[0-6]:initdefault:' "$ROOTFS/etc/inittab" || fail "No default SysVinit runlevel"
 ok "SysVinit is installed as PID 1 with a valid inittab"
 
