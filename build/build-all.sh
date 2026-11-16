@@ -301,6 +301,54 @@ Relogin=false
 Current=breeze
 EOF
 
+echo "==> Installing NOVA KDE application launcher icon"
+
+# A small icon theme that inherits Breeze but replaces KDE's start-menu logo.
+mkdir -p /usr/share/icons/NOVA/places/scalable
+
+cat > /usr/share/icons/NOVA/index.theme <<'NOVA_ICON_THEME'
+[Icon Theme]
+Name=NOVA
+Comment=NOVA Linux icon overrides with Breeze fallback
+Inherits=Breeze,hicolor
+Directories=places/scalable
+
+[places/scalable]
+Size=48
+Type=Scalable
+MinSize=16
+MaxSize=512
+Context=Places
+NOVA_ICON_THEME
+
+cat > /usr/share/icons/NOVA/places/scalable/start-here-kde.svg <<'NOVA_MENU_ICON'
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="nova" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#42e8ff"/>
+      <stop offset="0.52" stop-color="#6875ff"/>
+      <stop offset="1" stop-color="#f08bff"/>
+    </linearGradient>
+    <linearGradient id="orbit" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#42e8ff"/>
+      <stop offset="1" stop-color="#f08bff"/>
+    </linearGradient>
+  </defs>
+  <circle cx="256" cy="256" r="202" fill="#111827"/>
+  <ellipse cx="256" cy="256" rx="218" ry="94" transform="rotate(-34 256 256)"
+           fill="none" stroke="url(#orbit)" stroke-width="17" stroke-linecap="round"/>
+  <path d="M153 355V157h48l158 132V157h48v198h-46L201 222v133z"
+        fill="url(#nova)" stroke="#d9f8ff" stroke-opacity=".28" stroke-width="4"
+        stroke-linejoin="round"/>
+  <circle cx="432" cy="132" r="15" fill="#f08bff"/>
+</svg>
+NOVA_MENU_ICON
+
+cat > /etc/xdg/kdeglobals <<'NOVA_KDE_GLOBALS'
+[Icons]
+Theme=NOVA
+NOVA_KDE_GLOBALS
+
 echo "==> Configuring Fastfetch"
 
 mkdir -p /usr/share/fastfetch /etc/xdg/fastfetch
@@ -653,6 +701,54 @@ Relogin=false
 [Theme]
 Current=breeze
 EOF
+
+echo "==> Installing NOVA KDE application launcher icon"
+
+# A small icon theme that inherits Breeze but replaces KDE's start-menu logo.
+mkdir -p /usr/share/icons/NOVA/places/scalable
+
+cat > /usr/share/icons/NOVA/index.theme <<'NOVA_ICON_THEME'
+[Icon Theme]
+Name=NOVA
+Comment=NOVA Linux icon overrides with Breeze fallback
+Inherits=Breeze,hicolor
+Directories=places/scalable
+
+[places/scalable]
+Size=48
+Type=Scalable
+MinSize=16
+MaxSize=512
+Context=Places
+NOVA_ICON_THEME
+
+cat > /usr/share/icons/NOVA/places/scalable/start-here-kde.svg <<'NOVA_MENU_ICON'
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="nova" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#42e8ff"/>
+      <stop offset="0.52" stop-color="#6875ff"/>
+      <stop offset="1" stop-color="#f08bff"/>
+    </linearGradient>
+    <linearGradient id="orbit" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#42e8ff"/>
+      <stop offset="1" stop-color="#f08bff"/>
+    </linearGradient>
+  </defs>
+  <circle cx="256" cy="256" r="202" fill="#111827"/>
+  <ellipse cx="256" cy="256" rx="218" ry="94" transform="rotate(-34 256 256)"
+           fill="none" stroke="url(#orbit)" stroke-width="17" stroke-linecap="round"/>
+  <path d="M153 355V157h48l158 132V157h48v198h-46L201 222v133z"
+        fill="url(#nova)" stroke="#d9f8ff" stroke-opacity=".28" stroke-width="4"
+        stroke-linejoin="round"/>
+  <circle cx="432" cy="132" r="15" fill="#f08bff"/>
+</svg>
+NOVA_MENU_ICON
+
+cat > /etc/xdg/kdeglobals <<'NOVA_KDE_GLOBALS'
+[Icons]
+Theme=NOVA
+NOVA_KDE_GLOBALS
 
 echo "==> Configuring Fastfetch"
 
