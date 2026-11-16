@@ -18,7 +18,7 @@ ok() {
 package_installed() {
     local package="$1"
     local status
-    status="$(dpkg-query --admindir="$ROOTFS/var/lib/dpkg" -W -f='\${Status}' "$package" 2>/dev/null || true)"
+    status="$(dpkg-query --admindir="$ROOTFS/var/lib/dpkg" -W -f='${Status}' "$package" 2>/dev/null || true)"
     [[ "$status" == "install ok installed" ]]
 }
 
