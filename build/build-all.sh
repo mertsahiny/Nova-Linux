@@ -696,8 +696,9 @@ if [[ -z "$INIT_TARGET" || ! -x "$INIT_TARGET" ]]; then
     exit 1
 fi
 
-if ! dpkg-query -S "$INIT_TARGET" 2>/dev/null | grep -q '^sysvinit-core:'; then
-    echo "ERROR: /sbin/init is not owned by sysvinit-core: $INIT_TARGET" >&2
+INIT_OWNER="$(dpkg-query -S /sbin/init 2>/dev/null || true)"
+if ! grep -q '^sysvinit-core:' <<<"$INIT_OWNER"; then
+    echo "ERROR: /sbin/init is not provided by sysvinit-core: $INIT_OWNER" >&2
     exit 1
 fi
 
