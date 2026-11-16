@@ -68,6 +68,8 @@ for service in dbus elogind nova-laptop-hardware network-manager sddm nova-boot-
     [[ -x "$ROOTFS/etc/init.d/$service" ]] || fail "OpenRC service is missing: $service"
     [[ -L "$ROOTFS/etc/runlevels/default/$service" ]] || fail "OpenRC service is not enabled: $service"
 done
+grep -Fq 'pidfile="/run/dbus/openrc.pid"' "$ROOTFS/etc/init.d/dbus" || fail "D-Bus pidfile is outside /run/dbus"
+[[ ! -e "$ROOTFS/etc/runlevels/boot/bootlogs" && ! -e "$ROOTFS/etc/runlevels/default/bootlogs" ]] || fail "Legacy bootlogs service is enabled"
 for service in udev cgroups; do
     [[ -x "$ROOTFS/etc/init.d/$service" ]] || fail "Early-boot service script is missing: $service"
     [[ -L "$ROOTFS/etc/runlevels/sysinit/$service" ]] || fail "$service is not enabled in sysinit"
