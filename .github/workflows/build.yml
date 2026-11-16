@@ -53,6 +53,9 @@ jobs:
 
           sha256sum -c "$ISO.sha256"
 
+      - name: Smoke-test live boot in QEMU
+        run: bash tests/smoke-boot.sh "out/NOVA-Linux-$(cat VERSION)-amd64.iso"
+
       - name: Upload ISO artifact
         uses: actions/upload-artifact@v4
         with:
