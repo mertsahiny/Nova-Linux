@@ -3,7 +3,7 @@ name: NOVA Linux Validation
 on:
   workflow_dispatch:
   push:
-    branches: [ main, "fix/live-boot-init" ]
+    branches: [ main, "fix/live-boot-init", "fix/calamares-branding" ]
   pull_request:
 
 permissions:
@@ -55,6 +55,8 @@ jobs:
           grep -Fq 'NOVA_NETWORK_CONNECTED' build/build-all.sh
           grep -Fq 'orphan-sysvinit-scripts' build/build-all.sh
           grep -Fq 'nova-installer-launcher' build/build-all.sh
+          grep -Fq 'componentName: nova' build/build-all.sh
+          grep -Fq 'componentName: nova' tests/test-packages.sh
           grep -Fq 'Exec=/usr/bin/konsole --hold -e /usr/local/bin/nova-installer-launcher' build/build-all.sh
           grep -Fq 'PipeWire did not become ready' build/build-all.sh
           grep -Fq 'sddm-theme-breeze' build/build-all.sh
