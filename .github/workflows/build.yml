@@ -4,7 +4,7 @@ name: NOVA Linux Build
 on:
   workflow_dispatch:
   push:
-    branches: [ main, "fix/live-boot-init" ]
+    branches: [ main, "fix/live-boot-init", "fix/calamares-branding" ]
   schedule:
     - cron: "0 2 * * 0"
 
