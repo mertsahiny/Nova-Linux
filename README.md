@@ -28,8 +28,8 @@ The ISO and SHA-256 checksum are written to `out/`. GitHub Actions also runs a Q
 - **Base:** Debian 13 Trixie, amd64
 - **Desktop:** KDE Plasma 6
 - **Init:** SysVinit PID 1, with OpenRC runlevel/service management
-- **Display manager:** SDDM
-- **Networking:** NetworkManager, wpa_supplicant and firmware packages
+- **Display manager:** SDDM with a NOVA-branded Breeze theme and Plasma X11 session
+- **Networking:** NetworkManager, wpa_supplicant, managed-interface configuration and firmware packages
 - **Audio:** PipeWire, WirePlumber, ALSA and Plasma volume controls
 - **Installer:** Calamares with NOVA branding
 - **Bootloader:** GRUB, BIOS and UEFI

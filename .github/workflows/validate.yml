@@ -51,6 +51,8 @@ jobs:
           grep -Fq 'sysvinit-core' build/build-all.sh
           grep -Fq 'rc-update add udev sysinit' build/build-all.sh
           grep -Fq 'NOVA_BOOT_COMPLETED' build/build-all.sh
+          grep -Fq 'NOVA_NETWORK_MANAGER_RUNNING' build/build-all.sh
+          grep -Fq 'sddm-theme-breeze' build/build-all.sh
           grep -Fq 'Smoke-test live boot in QEMU' .github/workflows/build.yml
           grep -Fq 'qemu-system-x86_64' tests/smoke-boot.sh
           echo "Boot-chain safeguards are present."

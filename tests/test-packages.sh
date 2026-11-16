@@ -32,7 +32,7 @@ required_packages=(
     linux-image-amd64
     dbus elogind libpam-elogind
     network-manager wpasupplicant plasma-nm rfkill wireless-regdb
-    sddm kde-plasma-desktop kwin-x11
+    sddm sddm-theme-breeze kde-plasma-desktop kwin-x11
     pipewire pipewire-audio pipewire-alsa pipewire-pulse wireplumber
     libspa-0.2-modules alsa-utils alsa-ucm-conf plasma-pa
     calamares calamares-settings-debian
@@ -88,9 +88,13 @@ ok "Calamares helper, branding and desktop launcher are present"
 
 [[ -x "$ROOTFS/usr/local/bin/nova-audio-session" ]] || fail "NOVA PipeWire session launcher is missing"
 [[ -s "$ROOTFS/etc/xdg/autostart/nova-audio.desktop" ]] || fail "NOVA audio autostart entry is missing"
+grep -Fxq 'managed=true' "$ROOTFS/etc/NetworkManager/conf.d/90-nova-managed.conf" || fail "NetworkManager is not configured to manage ifupdown interfaces"
+[[ -s "$ROOTFS/usr/share/sddm/themes/nova/theme.conf" ]] || fail "NOVA SDDM theme is missing"
+[[ -s "$ROOTFS/usr/share/sddm/themes/nova/default-logo.svg" ]] || fail "NOVA SDDM logo is missing"
 [[ -s "$ROOTFS/home/nova/.config/kdeglobals" ]] || fail "NOVA user KDE configuration is missing"
 grep -Fxq 'Theme=NOVA' "$ROOTFS/home/nova/.config/kdeglobals" || fail "NOVA icon theme is not selected for the live user"
 grep -Fxq 'Session=plasmax11.desktop' "$ROOTFS/etc/sddm.conf.d/nova.conf" || fail "SDDM is not configured for the X11 Plasma session"
+grep -Fxq 'Current=nova' "$ROOTFS/etc/sddm.conf.d/nova.conf" || fail "SDDM is not configured to use NOVA branding"
 [[ -s "$ROOTFS/usr/share/xsessions/plasmax11.desktop" ]] || fail "Plasma X11 session desktop file is missing"
 [[ -x "$ROOTFS/usr/bin/kwin_x11" ]] || fail "KWin X11 executable is missing"
 ok "Audio autostart and NOVA desktop branding are present"

@@ -27,7 +27,7 @@ echo "Starting NOVA ISO in QEMU (BIOS, serial console)..."
     -display none \
     -serial "file:$LOG" \
     -monitor none \
-    -nic none \
+    -nic user,model=e1000 \
     -no-reboot \
     -no-shutdown \
     >/dev/null 2>&1 &
@@ -42,8 +42,19 @@ cleanup() {
 trap cleanup EXIT
 
 for attempt in $(seq 1 120); do
+    if grep -Fq "NOVA_NETWORK_MANAGER_MISSING" "$LOG" 2>/dev/null; then
+        echo "ERROR: NetworkManager failed to start in the live system." >&2
+        cat "$LOG" >&2 || true
+        exit 1
+    fi
+
     if grep -Fq "NOVA_BOOT_COMPLETED" "$LOG" 2>/dev/null; then
-        echo "PASS: NOVA reached its OpenRC default runlevel."
+        if ! grep -Fq "NOVA_NETWORK_MANAGER_RUNNING" "$LOG" 2>/dev/null; then
+            echo "ERROR: NOVA booted but NetworkManager did not report a running process." >&2
+            cat "$LOG" >&2 || true
+            exit 1
+        fi
+        echo "PASS: NOVA reached its OpenRC default runlevel and NetworkManager started."
         exit 0
     fi
 

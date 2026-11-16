@@ -146,6 +146,7 @@ apt-get install -y --no-install-recommends \
     pkexec \
     xserver-xorg \
     sddm \
+    sddm-theme-breeze \
     kde-plasma-desktop \
     kwin-x11 \
     dolphin \
@@ -403,6 +404,18 @@ echo "==> Configuring SDDM"
 
 mkdir -p /etc/sddm.conf.d
 
+if [[ ! -s /usr/share/sddm/themes/breeze/theme.conf ]]; then
+    echo "ERROR: Breeze SDDM theme is missing. Install sddm-theme-breeze." >&2
+    exit 1
+fi
+
+rm -rf /usr/share/sddm/themes/nova
+cp -a /usr/share/sddm/themes/breeze /usr/share/sddm/themes/nova
+install -m 0644 /etc/calamares/branding/nova/nova-logo.svg /usr/share/sddm/themes/nova/default-logo.svg
+if [[ -f /usr/share/sddm/themes/nova/metadata.desktop ]]; then
+    sed -i 's/^Name=.*/Name=NOVA/' /usr/share/sddm/themes/nova/metadata.desktop
+fi
+
 cat > /etc/sddm.conf.d/nova.conf <<'EOF'
 [Autologin]
 User=nova
@@ -410,7 +423,7 @@ Session=plasmax11.desktop
 Relogin=false
 
 [Theme]
-Current=breeze
+Current=nova
 EOF
 
 echo "==> Installing NOVA KDE application launcher icon"
@@ -636,6 +649,12 @@ depend() {
 NOVA_ELOGIND_INIT
 chmod 0755 /etc/init.d/elogind
 
+mkdir -p /etc/NetworkManager/conf.d
+cat > /etc/NetworkManager/conf.d/90-nova-managed.conf <<'NOVA_NETWORKMANAGER_CONF'
+[ifupdown]
+managed=true
+NOVA_NETWORKMANAGER_CONF
+
 cat > /etc/init.d/network-manager <<'NOVA_NETWORKMANAGER_INIT'
 #!/sbin/openrc-run
 description="NetworkManager daemon"
@@ -713,8 +732,14 @@ depend() {
 }
 
 start() {
-    ebegin "Marking NOVA live boot complete"
-    printf '%s\n' "NOVA_BOOT_COMPLETED" > /dev/ttyS0 2>/dev/null || true
+    ebegin "Checking NOVA networking and marking live boot complete"
+    if ! pgrep -x NetworkManager >/dev/null 2>&1; then
+        printf '%s\\n' "NOVA_NETWORK_MANAGER_MISSING" > /dev/ttyS0 2>/dev/null || true
+        eend 1 "NetworkManager did not start"
+        return 1
+    fi
+    printf '%s\\n' "NOVA_NETWORK_MANAGER_RUNNING" > /dev/ttyS0 2>/dev/null || true
+    printf '%s\\n' "NOVA_BOOT_COMPLETED" > /dev/ttyS0 2>/dev/null || true
     eend 0
 }
 NOVA_BOOT_SMOKE_INIT
