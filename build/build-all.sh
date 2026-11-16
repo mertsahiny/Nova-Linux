@@ -191,7 +191,7 @@ mkdir -p /etc/calamares/branding/nova
 
 cat > /etc/calamares/branding/nova/branding.desc <<'NOVA_BRANDING'
 ---
-componentName: NOVA Linux Installer
+componentName: nova
 welcomeStyleCalamares: true
 welcomeExpandingLogo: true
 windowExpanding: normal
@@ -227,6 +227,11 @@ style:
     SidebarTextCurrent: "#FFFFFF"
     SidebarBackgroundCurrent: "#26334D"
 NOVA_BRANDING
+
+if ! grep -Fxq 'componentName: nova' /etc/calamares/branding/nova/branding.desc; then
+    echo "ERROR: Calamares NOVA branding component name does not match its directory." >&2
+    exit 1
+fi
 
 # Shared NOVA orbital-N artwork for the installer window and sidebar.
 cat > /etc/calamares/branding/nova/nova-logo.svg <<'NOVA_LOGO'
