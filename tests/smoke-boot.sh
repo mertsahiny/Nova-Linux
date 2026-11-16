@@ -48,13 +48,20 @@ for attempt in $(seq 1 120); do
         exit 1
     fi
 
+    if grep -Fq "NOVA_NETWORK_NOT_CONNECTED" "$LOG" 2>/dev/null; then
+        echo "ERROR: NetworkManager started but QEMU Ethernet did not obtain a connection." >&2
+        cat "$LOG" >&2 || true
+        exit 1
+    fi
+
     if grep -Fq "NOVA_BOOT_COMPLETED" "$LOG" 2>/dev/null; then
-        if ! grep -Fq "NOVA_NETWORK_MANAGER_RUNNING" "$LOG" 2>/dev/null; then
-            echo "ERROR: NOVA booted but NetworkManager did not report a running process." >&2
+        if ! grep -Fq "NOVA_NETWORK_MANAGER_RUNNING" "$LOG" 2>/dev/null ||
+           ! grep -Fq "NOVA_NETWORK_CONNECTED" "$LOG" 2>/dev/null; then
+            echo "ERROR: NOVA booted without confirming a connected Ethernet device." >&2
             cat "$LOG" >&2 || true
             exit 1
         fi
-        echo "PASS: NOVA reached its OpenRC default runlevel and NetworkManager started."
+        echo "PASS: NOVA booted and NetworkManager connected the QEMU Ethernet device."
         exit 0
     fi
 
