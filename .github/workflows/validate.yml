@@ -52,6 +52,11 @@ jobs:
           grep -Fq 'rc-update add udev sysinit' build/build-all.sh
           grep -Fq 'NOVA_BOOT_COMPLETED' build/build-all.sh
           grep -Fq 'NOVA_NETWORK_MANAGER_RUNNING' build/build-all.sh
+          grep -Fq 'NOVA_NETWORK_CONNECTED' build/build-all.sh
+          grep -Fq 'orphan-sysvinit-scripts' build/build-all.sh
+          grep -Fq 'nova-installer-launcher' build/build-all.sh
+          grep -Fq 'Exec=/usr/bin/konsole --hold -e /usr/local/bin/nova-installer-launcher' build/build-all.sh
+          grep -Fq 'pipewire did not become ready' build/build-all.sh
           grep -Fq 'sddm-theme-breeze' build/build-all.sh
           grep -Fq 'Smoke-test live boot in QEMU' .github/workflows/build.yml
           grep -Fq 'qemu-system-x86_64' tests/smoke-boot.sh
