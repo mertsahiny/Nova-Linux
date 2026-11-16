@@ -299,7 +299,7 @@ apt-get install -y --no-install-recommends \
     firmware-mediatek \
     firmware-libertas \
     mesa-utils \
-    libgl1-mesa-dri \
+    libgl1-mesa-dri:amd64 \
     libglx-mesa0 \
     mesa-vulkan-drivers \
     libvulkan1 \

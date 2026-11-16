@@ -31,7 +31,7 @@ required_packages=(
     calamares calamares-settings-debian
     firmware-misc-nonfree firmware-iwlwifi firmware-realtek
     firmware-intel-graphics firmware-amd-graphics
-    mesa-utils libgl1-mesa-dri libglx-mesa0 mesa-vulkan-drivers libvulkan1
+    mesa-utils libgl1-mesa-dri:amd64 libglx-mesa0 mesa-vulkan-drivers libvulkan1
     steam-installer lutris wine wine64 wine32:i386 winetricks gamemode mangohud
 )
 
