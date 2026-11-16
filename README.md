@@ -9,7 +9,7 @@ A Debian-derived Linux distribution.
 - amd64 (x86_64)
 - Upstream: Debian 13 Trixie
 - Desktop: KDE Plasma 6
-- Init: systemd
+- Init: OpenRC
 - Display Manager: SDDM
 - Bootloader: GRUB
 - Installer: Calamares
