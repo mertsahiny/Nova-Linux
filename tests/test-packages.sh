@@ -1,154 +1,78 @@
-#!/bin/bash
-set -euo pipefail
+#!/usr/bin/env bash
+set -Eeuo pipefail
 
-# Nova Linux Test Packages Script
-# Phase 9: Quality Assurance - Package installation validation
-
-echo "=== NOVA LINUX - PACKAGE VALIDATION PHASE ==="
-echo ""
-
-# Verify we're running as root
-if [ "$(id -u)" -ne 0 ]; then
-    echo "ERROR: This script must be run as root"
+ROOTFS="${1:-${ROOTFS:-/nova-root}}"
+if [[ ! -d "$ROOTFS/var/lib/dpkg" || ! -s "$ROOTFS/var/lib/dpkg/status" ]]; then
+    echo "ERROR: $ROOTFS is not a configured Debian root filesystem." >&2
     exit 1
 fi
 
-echo "[1/9] Checking base system packages..."
-base_packages=(bash coreutils grep findutils sed awk file binutils diffutils gzip tar xz-utils zip unzip)
-for pkg in "${base_packages[@]}"; do
-    if dpkg -s "$pkg" &>/dev/null; then
-        echo " [OK] $pkg installed"
-    else
-        echo " [WARN] $pkg not installed"
-    fi
+fail() {
+    echo "FAIL: $*" >&2
+    exit 1
+}
+ok() {
+    echo "PASS: $*"
+}
+
+echo "=== NOVA ROOT FILESYSTEM VALIDATION ==="
+
+required_packages=(
+    sysvinit-core openrc systemd-standalone-sysusers
+    initscripts udev
+    live-boot live-boot-initramfs-tools initramfs-tools live-tools
+    live-config live-config-sysvinit
+    linux-image-amd64
+    dbus elogind libpam-elogind
+    network-manager wpasupplicant plasma-nm rfkill wireless-regdb
+    sddm kde-plasma-desktop
+    pipewire pipewire-audio pipewire-alsa pipewire-pulse wireplumber
+    libspa-0.2-modules alsa-utils alsa-ucm-conf plasma-pa
+    calamares calamares-settings-debian
+    firmware-misc-nonfree firmware-iwlwifi firmware-realtek
+    firmware-intel-graphics firmware-amd-graphics
+    mesa-utils libgl1-mesa-dri libglx-mesa0 mesa-vulkan-drivers libvulkan1
+    steam-installer lutris wine wine64 wine32 winetricks gamemode mangohud
+)
+
+for package in "${required_packages[@]}"; do
+    status="$(dpkg-query --admindir="$ROOTFS/var/lib/dpkg" -W -f='${Status}' "$package" 2>/dev/null || true)"
+    [[ "$status" == "install ok installed" ]] || fail "Required package is not installed: $package"
 done
+ok "All required boot, desktop, firmware, audio and gaming packages are installed"
 
-echo "[2/9] Checking KDE Plasma desktop packages..."
-kde_packages=(kde-plasma-desktop sddm kwin dolphin konsole kate systemsettings discover)
-for pkg in "${kde_packages[@]}"; do
-    if dpkg -s "$pkg" &>/dev/null; then
-        echo " [OK] $pkg installed"
-    else
-        echo " [WARN] $pkg not installed"
-    fi
+init_target="$(chroot "$ROOTFS" readlink -f /sbin/init)"
+[[ -n "$init_target" ]] || fail "/sbin/init does not resolve"
+chroot "$ROOTFS" test -x "$init_target" || fail "PID 1 target is not executable: $init_target"
+init_owner="$(dpkg-query --admindir="$ROOTFS/var/lib/dpkg" -S /sbin/init 2>/dev/null || true)"
+grep -q '^sysvinit-core:' <<<"$init_owner" || fail "/sbin/init is not owned by sysvinit-core"
+grep -Eq '^id:[0-6]:initdefault:' "$ROOTFS/etc/inittab" || fail "No default SysVinit runlevel"
+ok "SysVinit is installed as PID 1 with a valid inittab"
+
+for service in dbus elogind network-manager sddm nova-boot-smoke; do
+    [[ -x "$ROOTFS/etc/init.d/$service" ]] || fail "OpenRC service is missing: $service"
+    [[ -L "$ROOTFS/etc/runlevels/default/$service" ]] || fail "OpenRC service is not enabled: $service"
 done
+[[ -x "$ROOTFS/etc/init.d/udev" ]] || fail "udev service script is missing"
+[[ -L "$ROOTFS/etc/runlevels/sysinit/udev" ]] || fail "udev is not enabled in sysinit"
+ok "OpenRC services and early udev startup are configured"
 
-echo "[3/9] Checking GPU driver packages..."
-echo "      Nouveau open-source driver and Mesa installed by default"
-# Packages matching packages/firmware.txt - open-source GPU support
-# Note: kernel drivers (i915/xe for Intel, amdgpu/radeon for AMD) provided by linux-image-amd64
-# Mesa provides userspace graphics; firmware-intel-graphics and firmware-amd-graphics are firmware only
-gpu_packages=(mesa-utils libgl1-mesa-dri libglapi-mesa libglx-mesa0
-    firmware-intel-graphics firmware-amd-graphics mesa-va-drivers)
-for pkg in "${gpu_packages[@]}"; do
-    if dpkg -s "$pkg" &>/dev/null; then
-        echo " [OK] $pkg installed (open-source graphics)"
-    else
-        echo " [WARN] $pkg not installed"
-    fi
-done
+initrd="$(find "$ROOTFS/boot" -maxdepth 1 -type f -name 'initrd.img-*' | sort -V | tail -n1)"
+[[ -s "$initrd" ]] || fail "No kernel initramfs was generated"
+initrd_inside="/boot/${initrd##*/}"
+chroot "$ROOTFS" lsinitramfs "$initrd_inside" | grep -Fxq 'scripts/live' || fail "Initramfs is missing scripts/live"
+ok "Generated initramfs contains the live-boot script"
 
-# Nouveau is the default open-source NVIDIA driver - included by default
-# It provides basic VGA support for NVIDIA GPUs
-# Hardware compatibility varies by GPU generation - see Nouveau project documentation
-echo "      Nouveau open-source driver active by default"
-echo "      NVIDIA proprietary drivers: not installed during build"
-echo "      Post-installation: sudo apt-get install nvidia-driver nvidia-kernel-dkms (if compatible GPU)"
+[[ -x "$ROOTFS/usr/bin/calamares-install-debian" ]] || fail "Calamares live installer helper is missing"
+grep -q '^branding: nova$' "$ROOTFS/etc/calamares/settings.conf" || fail "Calamares is not using NOVA branding"
+grep -q '^Exec=/usr/bin/calamares-install-debian$' "$ROOTFS/usr/share/applications/nova-installer.desktop" || fail "NOVA installer launcher has an incorrect Exec"
+[[ -s "$ROOTFS/usr/share/pixmaps/nova-installer.svg" ]] || fail "NOVA installer icon is missing"
+ok "Calamares helper, branding and desktop launcher are present"
 
-# Note: NVIDIA proprietary drivers are NOT installed during automated build
-# This ensures maximum compatibility across different hardware configurations
-echo "      [INFO] NVIDIA driver installation is a post-installation choice"
+[[ -x "$ROOTFS/usr/local/bin/nova-audio-session" ]] || fail "NOVA PipeWire session launcher is missing"
+[[ -s "$ROOTFS/etc/xdg/autostart/nova-audio.desktop" ]] || fail "NOVA audio autostart entry is missing"
+[[ -s "$ROOTFS/home/nova/.config/kdeglobals" ]] || fail "NOVA user KDE configuration is missing"
+grep -q '^Theme=NOVA$' "$ROOTFS/home/nova/.config/kdeglobals" || fail "NOVA icon theme is not selected for the live user"
+ok "Audio autostart and NOVA desktop branding are present"
 
-echo "[4/9] Checking gaming and compatibility packages..."
-gaming_packages=(steam lutris wine64 wine32 winetricks gamemode mangohud
-    mesa-vulkan-drivers vulkan-loader vulkan-loader:i386)
-for pkg in "${gaming_packages[@]}"; do
-    if dpkg -s "$pkg" &>/dev/null; then
-        echo " [OK] $pkg installed (gaming support)"
-    else
-        echo " [WARN] $pkg not installed (gaming features may be limited)"
-    fi
-done
-
-# Note: 32-bit gaming packages require i386 multi-architecture
-echo "      [INFO] For 32-bit support: sudo dpkg --add-architecture i386"
-echo "              sudo apt-get update"
-echo "              sudo apt-get install libgl1-mesa-dri:i386"
-echo "                          libglapi-mesa:i386"
-echo "                          libegl1-mesa:i386"
-echo "                          libgles2-mesa:i386"
-echo "                          libglx-mesa0:i386"
-echo "                          mesa-vulkan-drivers:i386"
-
-# Note: Gaming packages are NOT installed during automated build
-# This keeps ISO size manageable. Install post-installation on NOVA system:
-#   sudo dpkg --add-architecture i386
-#   sudo apt-get update
-#   sudo apt-get install steam lutris wine64 wine32 winetricks gamemode mangohud
-#   libgl1-mesa-dri:i386 (and other 32-bit Mesa libraries for Vulkan/OpenGL)
-echo "      [INFO] Gaming packages: post-installation optional on NOVA system"
-
-echo "[5/9] Checking firmware packages..."
-firmware_packages=(firmware-linux firmware-linux-nonfree firmware-misc-nonfree firmware-iwlwifi firmware-realtek bluez bluez-utils)
-for pkg in "${firmware_packages[@]}"; do
-    if dpkg -s "$pkg" &>/dev/null; then
-        echo " [OK] $pkg installed"
-    else
-        echo " [WARN] $pkg not installed"
-    fi
-done
-
-echo "[5/9] Checking audio and multimedia packages..."
-audio_packages=(pipewire pipewire-audio pipewire-pulse bluez-pulseaudio pulseaudio)
-for pkg in "${audio_packages[@]}"; do
-    if dpkg -s "$pkg" &>/dev/null; then
-        echo " [OK] $pkg installed"
-    else
-        echo " [WARN] $pkg not installed"
-    fi
-done
-
-echo "[6/9] Checking system tools and utilities..."
-tools_packages=(network-manager sudo gparted htop bashtop neofetch synaptic p7zip file-roller bleachbit)
-for pkg in "${tools_packages[@]}"; do
-    if dpkg -s "$pkg" &>/dev/null; then
-        echo " [OK] $pkg installed"
-    else
-        echo " [WARN] $pkg not installed"
-    fi
-done
-
-echo "[7/9] Checking desktop applications..."
-apps_packages=(firefox-esr libreoffice thunderbird gparted)
-for pkg in "${apps_packages[@]}"; do
-    if dpkg -s "$pkg" &>/dev/null; then
-        echo " [OK] $pkg installed"
-    else
-        echo " [WARN] $pkg not installed"
-    fi
-done
-
-echo "[8/9] Checking branding and theme packages..."
-branding_packages=(novavibes-wallpapers)
-for pkg in "${branding_packages[@]}"; do
-    if dpkg -s "$pkg" &>/dev/null; then
-        echo " [OK] $pkg installed"
-    else
-        echo " [WARN] $pkg not installed (may be configured manually)"
-    fi
-done
-
-echo "[9/9] Validating NOVA Linux package integrity..."
-echo "Checking for essential NOVA Linux packages..."
-essential=(nova-kernel linux-image-amd64)
-for pkg in "${essential[@]}"; do
-    if dpkg -s "$pkg" &>/dev/null; then
-        echo " [OK] $pkg installed - kernel support verified"
-    else
-        echo " [WARN] $pkg not installed"
-    fi
-done
-
-echo ""
-echo "=== PACKAGE VALIDATION COMPLETE ==="
-echo "All essential NOVA Linux packages validated."
+echo "=== ALL ROOT FILESYSTEM CHECKS PASSED ==="

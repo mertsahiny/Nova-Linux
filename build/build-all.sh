@@ -136,6 +136,7 @@ apt-get install -y --no-install-recommends \
     live-boot-initramfs-tools \
     initramfs-tools \
     live-tools \
+    initscripts \
     network-manager \
     plasma-nm \
     wpasupplicant \
@@ -579,7 +580,15 @@ EOF
 
 echo "==> Configuring OpenRC"
 
-mkdir -p /etc/runlevels/default /etc/runlevels/boot /etc/runlevels/shutdown
+mkdir -p /etc/runlevels/sysinit /etc/runlevels/default /etc/runlevels/boot /etc/runlevels/shutdown
+
+# udev must be running before desktop and network services. Debian supplies
+# its SysV-compatible service in initscripts; OpenRC can manage it in sysinit.
+if [[ ! -x /etc/init.d/udev ]]; then
+    echo "ERROR: Debian udev init script is missing." >&2
+    exit 1
+fi
+rc-update add udev sysinit
 
 cat > /etc/rc.conf <<'EOF'
 rc_logger="YES"
@@ -671,7 +680,7 @@ depend() {
 
 start() {
     ebegin "Marking NOVA live boot complete"
-    printf '%s\\n' "NOVA_BOOT_COMPLETED" > /dev/ttyS0 2>/dev/null || true
+    printf '%s\n' "NOVA_BOOT_COMPLETED" > /dev/ttyS0 2>/dev/null || true
     eend 0
 }
 NOVA_BOOT_SMOKE_INIT
@@ -715,7 +724,7 @@ fi
 INIT_DEPS="$(ldd "$INIT_TARGET" 2>&1 || true)"
 if grep -q "not found" <<<"$INIT_DEPS"; then
     echo "ERROR: PID 1 has missing shared-library dependencies:" >&2
-    printf '%s\\n' "$INIT_DEPS" >&2
+    printf '%s\n' "$INIT_DEPS" >&2
     exit 1
 fi
 
@@ -797,6 +806,9 @@ if [[ -f "$PWD/Nova Wallpaper.png" ]]; then
 else
     echo "NOTICE: Nova Wallpaper.png not found."
 fi
+
+echo "==> Running root filesystem package and boot checks"
+bash "$PWD/tests/test-packages.sh" "$ROOTFS"
 
 echo "==> Preparing live-root mount points"
 
