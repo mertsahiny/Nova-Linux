@@ -134,6 +134,12 @@ apt-get install -y --no-install-recommends \
     linux-image-amd64 \
     live-boot \
     network-manager \
+    plasma-nm \
+    wpasupplicant \
+    wireless-regdb \
+    rfkill \
+    x11-xserver-utils \
+    pkexec \
     xserver-xorg \
     sddm \
     kde-plasma-desktop \
@@ -272,10 +278,16 @@ apt-get install -y --no-install-recommends \
     intel-microcode \
     amd64-microcode \
     firmware-misc-nonfree \
+    firmware-linux \
+    firmware-linux-nonfree \
     firmware-intel-graphics \
     firmware-amd-graphics \
     firmware-iwlwifi \
     firmware-realtek \
+    firmware-atheros \
+    firmware-brcm80211 \
+    firmware-mediatek \
+    firmware-libertas \
     mesa-utils \
     libgl1-mesa-dri \
     libglx-mesa0 \
@@ -310,8 +322,14 @@ echo "nova" > /etc/hostname
 
 echo "==> Creating live user"
 
+if ! getent group netdev >/dev/null 2>&1; then
+    groupadd --system netdev
+fi
+
 if ! id nova >/dev/null 2>&1; then
-    useradd -m -s /bin/bash -G sudo,audio,video,plugdev nova
+    useradd -m -s /bin/bash -G sudo,audio,video,plugdev,netdev nova
+else
+    usermod -aG netdev nova
 fi
 
 passwd -l nova || true
@@ -389,10 +407,23 @@ cat > /usr/share/icons/NOVA/places/scalable/start-here-kde.svg <<'NOVA_MENU_ICON
 </svg>
 NOVA_MENU_ICON
 
+# Plasma versions and applets may request one of these standard launcher names.
+cp /usr/share/icons/NOVA/places/scalable/start-here-kde.svg /usr/share/icons/NOVA/places/scalable/start-here.svg
+cp /usr/share/icons/NOVA/places/scalable/start-here-kde.svg /usr/share/icons/NOVA/places/scalable/start-here-plasma.svg
+
 cat > /etc/xdg/kdeglobals <<'NOVA_KDE_GLOBALS'
 [Icons]
 Theme=NOVA
 NOVA_KDE_GLOBALS
+
+# Plasma reads per-user settings ahead of the system defaults. Set the live
+# user's icon theme explicitly so the panel launcher uses NOVA artwork too.
+mkdir -p /home/nova/.config
+cat > /home/nova/.config/kdeglobals <<'NOVA_USER_KDE_GLOBALS'
+[Icons]
+Theme=NOVA
+NOVA_USER_KDE_GLOBALS
+chown -R nova:nova /home/nova/.config
 
 echo "==> Configuring Fastfetch"
 
@@ -476,6 +507,27 @@ rc_parallel="NO"
 rc_verbose="YES"
 EOF
 
+# Debian's NetworkManager package does not always provide an OpenRC service
+# script. Supply one so Wi-Fi is actually brought up in the live session.
+cat > /etc/init.d/NetworkManager <<'NOVA_NETWORKMANAGER_INIT'
+#!/sbin/openrc-run
+description="NetworkManager daemon"
+command="/usr/sbin/NetworkManager"
+command_args="--no-daemon"
+command_background="yes"
+pidfile="/run/NetworkManager/NetworkManager.pid"
+
+depend() {
+    need dbus
+    use logger
+}
+
+start_pre() {
+    checkpath --directory --mode 0755 /run/NetworkManager
+}
+NOVA_NETWORKMANAGER_INIT
+chmod 0755 /etc/init.d/NetworkManager
+
 # Enable services only when their OpenRC init scripts exist.
 for service in dbus elogind NetworkManager sddm; do
     if [[ -x "/etc/init.d/$service" ]]; then
@@ -528,46 +580,50 @@ rm -f /usr/sbin/policy-rc.d
 echo "==> Chroot configuration complete"
 CHROOT
 
-echo "==> Preparing Calamares launcher"
+echo "==> Preparing NOVA Calamares launcher"
 
-mkdir -p "$ROOTFS/usr/share/applications"
+mkdir -p "$ROOTFS/usr/share/applications" "$ROOTFS/home/nova/Desktop"
 
-CALAMARES_DESKTOP="$ROOTFS/usr/share/applications/calamares-install-debian.desktop"
-
-if [[ -f "$CALAMARES_DESKTOP" ]]; then
-    cp "$CALAMARES_DESKTOP" \
-        "$ROOTFS/usr/share/applications/nova-installer.desktop"
-
-    sed -i \
-        -e 's/^Name=.*/Name=Install NOVA Linux/' \
-        -e 's/^GenericName=.*/GenericName=NOVA Linux Installer/' \
-        -e 's/^Comment=.*/Comment=Install NOVA Linux on this computer/' \
-        -e 's/^Keywords=.*/Keywords=nova;linux;system;install;installer/' \
-        -e 's/^Icon=.*/Icon=nova-installer/' \
-        "$ROOTFS/usr/share/applications/nova-installer.desktop"
-
-    # Supply a NOVA icon and remove Debian's duplicate launcher/autostart icon.
-    install -D -m 0644 \
-        "$ROOTFS/etc/calamares/branding/nova/nova-logo.svg" \
-        "$ROOTFS/usr/share/pixmaps/nova-installer.svg"
-    rm -f "$ROOTFS/usr/share/applications/calamares-install-debian.desktop"
-    rm -f "$ROOTFS/etc/xdg/autostart/calamares-desktop-icon.desktop"
-
-    mkdir -p "$ROOTFS/home/nova/Desktop"
-
-    cp "$ROOTFS/usr/share/applications/nova-installer.desktop" \
-        "$ROOTFS/home/nova/Desktop/Install NOVA Linux.desktop"
-
-    chmod +x "$ROOTFS/home/nova/Desktop/Install NOVA Linux.desktop"
-
-    NOVA_UID="$(chroot "$ROOTFS" id -u nova)"
-    NOVA_GID="$(chroot "$ROOTFS" id -g nova)"
-
-    chown -R "$NOVA_UID:$NOVA_GID" "$ROOTFS/home/nova"
-else
-    echo "ERROR: Debian Calamares desktop entry not found." >&2
+# Keep Debian's live-media helper: it prepares the live fstab, grants the
+# temporary X access needed by root, and starts Calamares through pkexec.
+if [[ ! -x "$ROOTFS/usr/bin/calamares-install-debian" ]]; then
+    echo "ERROR: Debian Calamares live launcher is missing." >&2
     exit 1
 fi
+
+# The Debian wrapper uses xhost; install x11-xserver-utils above and make the
+# launch command explicit instead of relying on a copied desktop-file Exec.
+cat > "$ROOTFS/usr/share/applications/nova-installer.desktop" <<'NOVA_INSTALLER_DESKTOP'
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Install NOVA Linux
+GenericName=NOVA Linux Installer
+Comment=Install NOVA Linux on this computer
+Keywords=nova;linux;system;install;installer;
+TryExec=/usr/bin/calamares-install-debian
+Exec=/usr/bin/calamares-install-debian
+Icon=nova-installer
+Terminal=false
+StartupNotify=true
+Categories=System;
+NOVA_INSTALLER_DESKTOP
+
+install -D -m 0644 \
+    "$ROOTFS/etc/calamares/branding/nova/nova-logo.svg" \
+    "$ROOTFS/usr/share/pixmaps/nova-installer.svg"
+
+# Remove the Debian-branded launcher and its broken desktop-icon autostart.
+rm -f "$ROOTFS/usr/share/applications/calamares-install-debian.desktop"
+rm -f "$ROOTFS/etc/xdg/autostart/calamares-desktop-icon.desktop"
+
+cp "$ROOTFS/usr/share/applications/nova-installer.desktop" \
+    "$ROOTFS/home/nova/Desktop/Install NOVA Linux.desktop"
+chmod 0755 "$ROOTFS/home/nova/Desktop/Install NOVA Linux.desktop"
+
+NOVA_UID="$(chroot "$ROOTFS" id -u nova)"
+NOVA_GID="$(chroot "$ROOTFS" id -g nova)"
+chown -R "$NOVA_UID:$NOVA_GID" "$ROOTFS/home/nova"
 
 echo "==> Installing wallpaper"
 
