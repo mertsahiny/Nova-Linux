@@ -590,6 +590,15 @@ if [[ ! -x /etc/init.d/udev ]]; then
 fi
 rc-update add udev sysinit
 
+# Mount cgroups during early boot so elogind and applications see a working
+# resource-control hierarchy on kernels that expose cgroup support.
+if [[ -x /etc/init.d/cgroups ]]; then
+    rc-update add cgroups sysinit
+else
+    echo "ERROR: OpenRC cgroups service is missing." >&2
+    exit 1
+fi
+
 cat > /etc/rc.conf <<'EOF'
 rc_logger="YES"
 rc_log_path="/var/log/rc.log"

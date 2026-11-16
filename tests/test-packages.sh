@@ -32,7 +32,7 @@ required_packages=(
     firmware-misc-nonfree firmware-iwlwifi firmware-realtek
     firmware-intel-graphics firmware-amd-graphics
     mesa-utils libgl1-mesa-dri libglx-mesa0 mesa-vulkan-drivers libvulkan1
-    steam-installer lutris wine wine64 wine32 winetricks gamemode mangohud
+    steam-installer lutris wine wine64 wine32:i386 winetricks gamemode mangohud
 )
 
 for package in "${required_packages[@]}"; do
@@ -53,9 +53,35 @@ for service in dbus elogind network-manager sddm nova-boot-smoke; do
     [[ -x "$ROOTFS/etc/init.d/$service" ]] || fail "OpenRC service is missing: $service"
     [[ -L "$ROOTFS/etc/runlevels/default/$service" ]] || fail "OpenRC service is not enabled: $service"
 done
-[[ -x "$ROOTFS/etc/init.d/udev" ]] || fail "udev service script is missing"
-[[ -L "$ROOTFS/etc/runlevels/sysinit/udev" ]] || fail "udev is not enabled in sysinit"
-ok "OpenRC services and early udev startup are configured"
+for service in udev cgroups; do
+    [[ -x "$ROOTFS/etc/init.d/$service" ]] || fail "Early-boot service script is missing: $service"
+    [[ -L "$ROOTFS/etc/runlevels/sysinit/$service" ]] || fail "$service is not enabled in sysinit"
+done
+for script in rc rcS; do
+    [[ -x "$ROOTFS/etc/init.d/$script" ]] || fail "SysVinit/OpenRC integration script is missing: $script"
+done
+grep -Eq '^si::sysinit:/etc/init.d/rcS
+initrd="$(find "$ROOTFS/boot" -maxdepth 1 -type f -name 'initrd.img-*' | sort -V | tail -n1)"
+[[ -s "$initrd" ]] || fail "No kernel initramfs was generated"
+initrd_inside="/boot/${initrd##*/}"
+chroot "$ROOTFS" lsinitramfs "$initrd_inside" | grep -Fxq 'scripts/live' || fail "Initramfs is missing scripts/live"
+ok "Generated initramfs contains the live-boot script"
+
+[[ -x "$ROOTFS/usr/bin/calamares-install-debian" ]] || fail "Calamares live installer helper is missing"
+grep -q '^branding: nova$' "$ROOTFS/etc/calamares/settings.conf" || fail "Calamares is not using NOVA branding"
+grep -q '^Exec=/usr/bin/calamares-install-debian$' "$ROOTFS/usr/share/applications/nova-installer.desktop" || fail "NOVA installer launcher has an incorrect Exec"
+[[ -s "$ROOTFS/usr/share/pixmaps/nova-installer.svg" ]] || fail "NOVA installer icon is missing"
+ok "Calamares helper, branding and desktop launcher are present"
+
+[[ -x "$ROOTFS/usr/local/bin/nova-audio-session" ]] || fail "NOVA PipeWire session launcher is missing"
+[[ -s "$ROOTFS/etc/xdg/autostart/nova-audio.desktop" ]] || fail "NOVA audio autostart entry is missing"
+[[ -s "$ROOTFS/home/nova/.config/kdeglobals" ]] || fail "NOVA user KDE configuration is missing"
+grep -q '^Theme=NOVA$' "$ROOTFS/home/nova/.config/kdeglobals" || fail "NOVA icon theme is not selected for the live user"
+ok "Audio autostart and NOVA desktop branding are present"
+
+echo "=== ALL ROOT FILESYSTEM CHECKS PASSED ==="
+ "$ROOTFS/etc/inittab" || fail "inittab does not invoke OpenRC's sysinit hook"
+ok "OpenRC hooks, udev, cgroups and early boot services are configured"
 
 initrd="$(find "$ROOTFS/boot" -maxdepth 1 -type f -name 'initrd.img-*' | sort -V | tail -n1)"
 [[ -s "$initrd" ]] || fail "No kernel initramfs was generated"
