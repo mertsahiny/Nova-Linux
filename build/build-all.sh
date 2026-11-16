@@ -662,10 +662,6 @@ sha256sum "$ISO" > "$ISO.sha256"
 echo "==> NOVA Linux ISO created"
 
 ls -lh "$ISO" "$ISO.sha256"
- /etc/calamares/settings.conf; then
-    echo "ERROR: Calamares did not switch to NOVA branding." >&2
-    exit 1
-fi
 
 echo "==> Installing firmware and graphics"
 
