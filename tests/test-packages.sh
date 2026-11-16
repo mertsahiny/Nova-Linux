@@ -25,7 +25,7 @@ package_installed() {
 echo "=== NOVA ROOT FILESYSTEM VALIDATION ==="
 
 required_packages=(
-    sysvinit-core openrc systemd-standalone-sysusers
+    sysvinit-core openrc systemd-standalone-sysusers orphan-sysvinit-scripts
     initscripts udev
     live-boot live-boot-initramfs-tools initramfs-tools live-tools
     live-config live-config-sysvinit
@@ -81,14 +81,19 @@ chroot "$ROOTFS" lsinitramfs "$initrd_inside" | grep -Fxq 'scripts/live' || fail
 ok "Generated initramfs contains the live-boot script"
 
 [[ -x "$ROOTFS/usr/bin/calamares-install-debian" ]] || fail "Calamares live installer helper is missing"
+[[ -x "$ROOTFS/usr/local/bin/nova-installer-launcher" ]] || fail "NOVA installer diagnostic launcher is missing"
+sh -n "$ROOTFS/usr/local/bin/nova-installer-launcher" || fail "NOVA installer launcher has invalid shell syntax"
 grep -Fxq 'branding: nova' "$ROOTFS/etc/calamares/settings.conf" || fail "Calamares is not using NOVA branding"
-grep -Fxq 'Exec=/usr/bin/calamares-install-debian' "$ROOTFS/usr/share/applications/nova-installer.desktop" || fail "NOVA installer launcher has an incorrect Exec"
+grep -Fxq 'Exec=/usr/bin/konsole --hold -e /usr/local/bin/nova-installer-launcher' "$ROOTFS/usr/share/applications/nova-installer.desktop" || fail "NOVA installer launcher does not show startup errors"
 [[ -s "$ROOTFS/usr/share/pixmaps/nova-installer.svg" ]] || fail "NOVA installer icon is missing"
-ok "Calamares helper, branding and desktop launcher are present"
+ok "Calamares helper, NOVA branding and visible diagnostic launcher are present"
 
 [[ -x "$ROOTFS/usr/local/bin/nova-audio-session" ]] || fail "NOVA PipeWire session launcher is missing"
 [[ -s "$ROOTFS/etc/xdg/autostart/nova-audio.desktop" ]] || fail "NOVA audio autostart entry is missing"
 grep -Fxq 'managed=true' "$ROOTFS/etc/NetworkManager/conf.d/90-nova-managed.conf" || fail "NetworkManager is not configured to manage ifupdown interfaces"
+grep -q 'orphan-sysvinit-scripts' "$ROOTFS/var/lib/dpkg/status" || fail "Debian OpenRC NetworkManager service package is missing"
+command -v nmcli >/dev/null 2>&1 || chroot "$ROOTFS" test -x /usr/bin/nmcli || fail "NetworkManager CLI is missing"
+sh -n "$ROOTFS/usr/local/bin/nova-audio-session" || fail "NOVA audio startup script has invalid shell syntax"
 [[ -s "$ROOTFS/usr/share/sddm/themes/nova/theme.conf" ]] || fail "NOVA SDDM theme is missing"
 [[ -s "$ROOTFS/usr/share/sddm/themes/nova/default-logo.svg" ]] || fail "NOVA SDDM logo is missing"
 [[ -s "$ROOTFS/home/nova/.config/kdeglobals" ]] || fail "NOVA user KDE configuration is missing"
