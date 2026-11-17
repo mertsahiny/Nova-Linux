@@ -754,12 +754,30 @@ cat > /etc/NetworkManager/conf.d/90-nova-managed.conf <<'NOVA_NETWORKMANAGER_CON
 managed=true
 NOVA_NETWORKMANAGER_CONF
 
-# Use the NetworkManager OpenRC init script supplied by Debian's
-# orphan-sysvinit-scripts package. Do not replace it with a hand-written
-# backgrounding wrapper: the packaged script handles daemon and pidfile state.
-if [[ ! -x /etc/init.d/network-manager ]]; then
-    echo "ERROR: Debian's NetworkManager OpenRC init script is missing." >&2
-    echo "Check that orphan-sysvinit-scripts was installed." >&2
+# Provide a native OpenRC service. Debian's SysV compatibility script can
+# block while launching NetworkManager in a live-boot environment.
+cat > /etc/init.d/network-manager <<'NOVA_NETWORKMANAGER_INIT'
+#!/sbin/openrc-run
+description="NetworkManager network connection manager"
+command="/usr/sbin/NetworkManager"
+command_args="--no-daemon --pid-file=/run/NetworkManager/NetworkManager.pid"
+command_background="yes"
+pidfile="/run/NetworkManager-openrc.pid"
+
+depend() {
+    need dbus
+    use logger
+    after localmount
+}
+
+start_pre() {
+    checkpath --directory --mode 0755 /run/NetworkManager
+}
+NOVA_NETWORKMANAGER_INIT
+chmod 0755 /etc/init.d/network-manager
+
+if [[ ! -x /usr/sbin/NetworkManager ]]; then
+    echo "ERROR: NetworkManager daemon is missing." >&2
     exit 1
 fi
 
@@ -848,7 +866,8 @@ cat > /etc/init.d/nova-boot-smoke <<'NOVA_BOOT_SMOKE_INIT'
 description="NOVA live boot smoke-test marker"
 
 depend() {
-    after dbus elogind network-manager sddm
+    after dbus elogind network-manager
+    before sddm
 }
 
 start() {
