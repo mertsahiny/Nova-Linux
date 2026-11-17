@@ -18,6 +18,18 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Validate shell scripts and Calamares branding
+        run: |
+          bash -n build/build-all.sh
+          bash -n build/configure-installer.sh
+          test -s build/calamares/branding.desc
+          test -s build/calamares/stylesheet.qss
+          grep -q 'componentName: nova' build/calamares/branding.desc
+          grep -q 'nova-configure-installer.sh' build/build-all.sh
+          grep -q 'google-chrome-stable' build/build-all.sh
+          grep -q 'firefox-esr' build/build-all.sh
+          grep -q 'ColorScheme=BreezeDark' build/build-all.sh
+
       - name: Validate project structure
         run: |
           echo "Checking project structure..."
