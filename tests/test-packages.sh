@@ -96,6 +96,8 @@ grep -Fxq 'NAME="Nova Linux"' "$ROOTFS/etc/os-release" || fail "Nova OS name is 
 grep -Fxq 'PRETTY_NAME="Nova Linux 0.1.0"' "$ROOTFS/etc/os-release" || fail "Nova pretty name is missing from os-release"
 grep -Fxq 'ID=nova' "$ROOTFS/etc/os-release" || fail "Nova distro ID is missing from os-release"
 grep -Fxq 'ID_LIKE=debian' "$ROOTFS/etc/os-release" || fail "Debian compatibility family is missing from os-release"
+grep -Fxq 'DISTRIB_ID=Nova' "$ROOTFS/etc/lsb-release" || fail "Nova LSB distribution ID is missing"
+grep -Fxq 'DISTRIB_DESCRIPTION="Nova Linux 0.1.0"' "$ROOTFS/etc/lsb-release" || fail "Nova LSB description is missing"
 [[ -s "$ROOTFS/etc/calamares/branding/debian/nova-logo.svg" ]] || fail "NOVA Calamares logo is missing"
 grep -Fxq 'Exec=/usr/bin/konsole --hold -e /usr/local/bin/nova-installer-launcher' "$ROOTFS/usr/share/applications/nova-installer.desktop" || fail "NOVA installer launcher does not show startup errors"
 [[ -s "$ROOTFS/usr/share/pixmaps/nova-installer.svg" ]] || fail "NOVA installer icon is missing"
