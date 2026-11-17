@@ -227,7 +227,26 @@ style:
     SidebarText: "#E5E7EB"
     SidebarTextCurrent: "#FFFFFF"
     SidebarBackgroundCurrent: "#26334D"
+
+# Calamares requires a slideshow entry even when the installer uses a simple
+# static progress page. Ship a small NOVA QML slideshow beside this descriptor.
+slideshow: "show.qml"
+slideshowAPI: 2
 NOVA_BRANDING
+
+cat > /etc/calamares/branding/debian/show.qml <<'NOVA_SLIDESHOW'
+import QtQuick 2.0
+import calamares.slideshow 1.0
+
+Presentation {
+    Slide {
+        centeredText: qsTr("Installing NOVA Linux...")
+    }
+
+    function onActivate() {}
+    function onLeave() {}
+}
+NOVA_SLIDESHOW
 
 if ! grep -Fxq 'componentName: debian' /etc/calamares/branding/debian/branding.desc; then
     echo "ERROR: Calamares NOVA branding component name does not match its directory." >&2
