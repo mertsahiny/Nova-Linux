@@ -54,6 +54,18 @@ deb https://deb.debian.org/debian trixie-updates main contrib non-free non-free-
 deb https://security.debian.org/debian-security trixie-security main contrib non-free non-free-firmware
 EOF
 
+echo "==> Staging NOVA Calamares branding"
+install -D -m 0755 "$PWD/build/configure-installer.sh" "$ROOTFS/tmp/nova-configure-installer.sh"
+install -D -m 0644 "$PWD/build/calamares/branding.desc" "$ROOTFS/usr/share/nova/calamares/branding.desc"
+install -D -m 0644 "$PWD/build/calamares/stylesheet.qss" "$ROOTFS/usr/share/nova/calamares/stylesheet.qss"
+
+if [[ -f "$PWD/Nova Wallpaper.png" ]]; then
+    install -D -m 0644 "$PWD/Nova Wallpaper.png" "$ROOTFS/usr/share/nova/calamares/nova-welcome.png"
+else
+    echo "ERROR: Nova Wallpaper.png is required for the Calamares welcome page." >&2
+    exit 1
+fi
+
 echo "==> Preparing chroot mounts"
 
 mount --bind /dev "$ROOTFS/dev"
@@ -166,6 +178,9 @@ apt-get install -y --no-install-recommends \
     calamares \
     calamares-settings-debian \
     squashfs-tools
+
+echo "==> Applying NOVA Calamares configuration"
+bash /tmp/nova-configure-installer.sh
 
 echo "==> Installing firmware and graphics"
 
@@ -368,28 +383,18 @@ echo "==> Preparing Calamares launcher"
 
 mkdir -p "$ROOTFS/usr/share/applications"
 
-CALAMARES_DESKTOP="$ROOTFS/usr/share/applications/calamares-install-debian.desktop"
+CALAMARES_DESKTOP="$ROOTFS/usr/share/applications/nova-installer.desktop"
 
-if [[ -f "$CALAMARES_DESKTOP" ]]; then
-    cp "$CALAMARES_DESKTOP" \
-        "$ROOTFS/usr/share/applications/nova-installer.desktop"
-
-    sed -i 's/^Name=.*/Name=Install NOVA Linux/' \
-        "$ROOTFS/usr/share/applications/nova-installer.desktop"
-
+if [[ -s "$CALAMARES_DESKTOP" ]]; then
     mkdir -p "$ROOTFS/home/nova/Desktop"
-
-    cp "$ROOTFS/usr/share/applications/nova-installer.desktop" \
-        "$ROOTFS/home/nova/Desktop/Install NOVA Linux.desktop"
-
-    chmod +x "$ROOTFS/home/nova/Desktop/Install NOVA Linux.desktop"
+    cp "$CALAMARES_DESKTOP" "$ROOTFS/home/nova/Desktop/Install NOVA Linux.desktop"
+    chmod 0755 "$ROOTFS/home/nova/Desktop/Install NOVA Linux.desktop"
 
     NOVA_UID="$(chroot "$ROOTFS" id -u nova)"
     NOVA_GID="$(chroot "$ROOTFS" id -g nova)"
-
     chown -R "$NOVA_UID:$NOVA_GID" "$ROOTFS/home/nova"
 else
-    echo "ERROR: Debian Calamares desktop entry not found." >&2
+    echo "ERROR: NOVA Calamares desktop entry was not created." >&2
     exit 1
 fi
 
