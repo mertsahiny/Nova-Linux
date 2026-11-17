@@ -174,6 +174,7 @@ apt-get install -y --no-install-recommends \
     polkit-kde-agent-1 \
     firefox-esr \
     fastfetch \
+    lsb-release \
     calamares \
     calamares-settings-debian \
     squashfs-tools
@@ -434,6 +435,14 @@ LOGO=nova
 HOME_URL="https://github.com/mertsahiny/Nova-Linux"
 SUPPORT_URL="https://github.com/mertsahiny/Nova-Linux/issues"
 BUG_REPORT_URL="https://github.com/mertsahiny/Nova-Linux/issues"
+EOF
+
+# Also provide the LSB identity for tools that still query lsb_release.
+cat > /etc/lsb-release <<'EOF'
+DISTRIB_ID=Nova
+DISTRIB_RELEASE=0.1.0
+DISTRIB_CODENAME=trixie
+DISTRIB_DESCRIPTION="Nova Linux 0.1.0"
 EOF
 
 echo "==> Configuring SDDM"
