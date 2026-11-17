@@ -228,7 +228,7 @@ style:
     SidebarBackgroundCurrent: "#26334D"
 NOVA_BRANDING
 
-if ! grep -Fxq 'componentName: nova' /etc/calamares/branding/debian/branding.desc; then
+if ! grep -Fxq 'componentName: debian' /etc/calamares/branding/debian/branding.desc; then
     echo "ERROR: Calamares NOVA branding component name does not match its directory." >&2
     exit 1
 fi
