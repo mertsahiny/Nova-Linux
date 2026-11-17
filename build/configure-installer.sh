@@ -74,4 +74,15 @@ sed -i \
     -e 's/^Icon=.*/Icon=calamares/' \
     "$DESKTOP_TARGET"
 
+# Keep Debian's original launcher and desktop-icon autostart from appearing
+# alongside the NOVA-branded launcher.
+if [[ -f "$DESKTOP_SOURCE" ]]; then
+    if grep -q '^NoDisplay=' "$DESKTOP_SOURCE"; then
+        sed -i 's/^NoDisplay=.*/NoDisplay=true/' "$DESKTOP_SOURCE"
+    else
+        printf '\nNoDisplay=true\n' >> "$DESKTOP_SOURCE"
+    fi
+fi
+rm -f /etc/xdg/autostart/calamares-desktop-icon.desktop
+
 echo "==> NOVA Calamares branding and launcher configured"
