@@ -302,7 +302,10 @@ echo "==> Smoke-testing Calamares configuration before creating the ISO"
 # Offscreen Qt allows Calamares to parse settings, modules and branding in CI.
 # A timeout is expected because a healthy GUI waits for user interaction.
 set +e
-QT_QPA_PLATFORM=offscreen timeout 12s calamares -d -c /etc/calamares \
+# Use the system-wide Debian package paths: settings in /etc/calamares,
+# application QML resources in /usr/share/calamares. Do not pass -c here,
+# because Calamares uses that override for its application-data directory too.
+QT_QPA_PLATFORM=offscreen timeout 12s calamares -D8 \
     >/tmp/nova-calamares-startup.log 2>&1
 calamares_status=$?
 set -e
