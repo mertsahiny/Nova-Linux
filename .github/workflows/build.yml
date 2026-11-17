@@ -33,6 +33,7 @@ jobs:
             qemu-system-x86
 
       - name: Build NOVA Linux ISO
+# Triggered build requested by the maintainer.
         run: |
           sudo mkdir -p out
           sudo env NOVA_VERSION="$(cat VERSION)" bash build/build-all.sh
