@@ -187,11 +187,11 @@ if [[ ! -f /etc/calamares/settings.conf || ! -f /etc/calamares/branding/debian/b
     exit 1
 fi
 
-mkdir -p /etc/calamares/branding/nova
+mkdir -p /etc/calamares/branding/debian
 
-cat > /etc/calamares/branding/nova/branding.desc <<'NOVA_BRANDING'
+cat > /etc/calamares/branding/debian/branding.desc <<'NOVA_BRANDING'
 ---
-componentName: nova
+componentName: debian
 welcomeStyleCalamares: true
 welcomeExpandingLogo: true
 windowExpanding: normal
@@ -228,13 +228,13 @@ style:
     SidebarBackgroundCurrent: "#26334D"
 NOVA_BRANDING
 
-if ! grep -Fxq 'componentName: nova' /etc/calamares/branding/nova/branding.desc; then
+if ! grep -Fxq 'componentName: nova' /etc/calamares/branding/debian/branding.desc; then
     echo "ERROR: Calamares NOVA branding component name does not match its directory." >&2
     exit 1
 fi
 
 # Shared NOVA orbital-N artwork for the installer window and sidebar.
-cat > /etc/calamares/branding/nova/nova-logo.svg <<'NOVA_LOGO'
+cat > /etc/calamares/branding/debian/nova-logo.svg <<'NOVA_LOGO'
 <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
   <defs>
     <linearGradient id="nova" x1="0" y1="0" x2="1" y2="1">
@@ -254,7 +254,7 @@ cat > /etc/calamares/branding/nova/nova-logo.svg <<'NOVA_LOGO'
 </svg>
 NOVA_LOGO
 
-cat > /etc/calamares/branding/nova/nova-banner.svg <<'NOVA_BANNER'
+cat > /etc/calamares/branding/debian/nova-banner.svg <<'NOVA_BANNER'
 <svg xmlns="http://www.w3.org/2000/svg" width="720" height="120" viewBox="0 0 720 120">
   <defs><linearGradient id="word" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#42e8ff"/><stop offset=".55" stop-color="#8790ff"/><stop offset="1" stop-color="#f08bff"/></linearGradient></defs>
   <rect width="720" height="120" rx="18" fill="#111827"/>
@@ -262,7 +262,7 @@ cat > /etc/calamares/branding/nova/nova-banner.svg <<'NOVA_BANNER'
 </svg>
 NOVA_BANNER
 
-cat > /etc/calamares/branding/nova/nova-welcome.svg <<'NOVA_WELCOME'
+cat > /etc/calamares/branding/debian/nova-welcome.svg <<'NOVA_WELCOME'
 <svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360">
   <rect width="640" height="360" rx="28" fill="#111827"/>
   <image href="nova-logo.svg" x="190" y="20" width="260" height="260"/>
@@ -270,7 +270,7 @@ cat > /etc/calamares/branding/nova/nova-welcome.svg <<'NOVA_WELCOME'
 </svg>
 NOVA_WELCOME
 
-cat > /etc/calamares/branding/nova/nova-wallpaper.svg <<'NOVA_WALLPAPER'
+cat > /etc/calamares/branding/debian/nova-wallpaper.svg <<'NOVA_WALLPAPER'
 <svg xmlns="http://www.w3.org/2000/svg" width="900" height="620" viewBox="0 0 900 620">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0b1020"/><stop offset=".55" stop-color="#171a3b"/><stop offset="1" stop-color="#241532"/></linearGradient>
@@ -282,17 +282,41 @@ cat > /etc/calamares/branding/nova/nova-wallpaper.svg <<'NOVA_WALLPAPER'
 </svg>
 NOVA_WALLPAPER
 
-# Select the NOVA branding component and verify the setting.
-sed -i 's/^branding: debian$/branding: nova/' /etc/calamares/settings.conf
-if ! grep -q '^branding: nova$' /etc/calamares/settings.conf; then
-    echo "ERROR: Calamares did not switch to NOVA branding." >&2
+# Keep the Debian settings package's original component directory and componentName.
+# The visible product strings and artwork are NOVA; retaining the matching internal
+# component name avoids Calamares rejecting the branding descriptor before startup.
+if ! grep -Fxq 'branding: debian' /etc/calamares/settings.conf; then
+    echo "ERROR: Calamares settings do not select the Debian component directory." >&2
     exit 1
 fi
-
-# Remove the Debian branding assets after switching to the NOVA component.
-rm -rf /etc/calamares/branding/debian
+if ! grep -Fxq 'componentName: debian' /etc/calamares/branding/debian/branding.desc; then
+    echo "ERROR: Calamares branding component name does not match its directory." >&2
+    exit 1
+fi
 rm -f /usr/share/pixmaps/install-debian.png
-install -D -m 0644 /etc/calamares/branding/nova/nova-logo.svg /usr/share/pixmaps/nova-installer.svg
+install -D -m 0644 /etc/calamares/branding/debian/nova-logo.svg /usr/share/pixmaps/nova-installer.svg
+
+echo "==> Smoke-testing Calamares configuration before creating the ISO"
+
+# Offscreen Qt allows Calamares to parse settings, modules and branding in CI.
+# A timeout is expected because a healthy GUI waits for user interaction.
+set +e
+QT_QPA_PLATFORM=offscreen timeout 12s calamares -d -c /etc/calamares \
+    >/tmp/nova-calamares-startup.log 2>&1
+calamares_status=$?
+set -e
+if [[ "$calamares_status" -ne 0 && "$calamares_status" -ne 124 ]]; then
+    cat /tmp/nova-calamares-startup.log >&2
+    echo "ERROR: Calamares failed during startup/configuration validation (status $calamares_status)." >&2
+    exit 1
+fi
+if grep -Eiq 'component name should match|ERROR: FATAL|failed to load branding' /tmp/nova-calamares-startup.log; then
+    cat /tmp/nova-calamares-startup.log >&2
+    echo "ERROR: Calamares rejected the NOVA branding configuration." >&2
+    exit 1
+fi
+echo "Calamares loaded the NOVA-branded configuration without fatal branding errors."
+
 
 apt-get install -y --no-install-recommends \
     intel-microcode \
@@ -399,13 +423,17 @@ chmod 0440 /etc/sudoers.d/90-nova-live
 echo "==> Configuring NOVA identity"
 
 cat > /etc/os-release <<'EOF'
-PRETTY_NAME="NOVA Linux 0.1.0 (Supernova)"
-NAME="NOVA Linux"
+PRETTY_NAME="Nova Linux 0.1.0"
+NAME="Nova Linux"
 VERSION_ID="0.1.0"
 VERSION="0.1.0 (Supernova)"
 ID=nova
 ID_LIKE=debian
 VERSION_CODENAME=trixie
+LOGO=nova
+HOME_URL="https://github.com/mertsahiny/Nova-Linux"
+SUPPORT_URL="https://github.com/mertsahiny/Nova-Linux/issues"
+BUG_REPORT_URL="https://github.com/mertsahiny/Nova-Linux/issues"
 EOF
 
 echo "==> Configuring SDDM"
@@ -419,7 +447,7 @@ fi
 
 rm -rf /usr/share/sddm/themes/nova
 cp -a /usr/share/sddm/themes/breeze /usr/share/sddm/themes/nova
-install -m 0644 /etc/calamares/branding/nova/nova-logo.svg /usr/share/sddm/themes/nova/default-logo.svg
+install -m 0644 /etc/calamares/branding/debian/nova-logo.svg /usr/share/sddm/themes/nova/default-logo.svg
 if [[ -f /usr/share/sddm/themes/nova/metadata.desktop ]]; then
     sed -i 's/^Name=.*/Name=NOVA/' /usr/share/sddm/themes/nova/metadata.desktop
 fi
@@ -935,7 +963,7 @@ Categories=System;
 NOVA_INSTALLER_DESKTOP
 
 install -D -m 0644 \
-    "$ROOTFS/etc/calamares/branding/nova/nova-logo.svg" \
+    "$ROOTFS/etc/calamares/branding/debian/nova-logo.svg" \
     "$ROOTFS/usr/share/pixmaps/nova-installer.svg"
 
 # Remove the Debian-branded launcher and its broken desktop-icon autostart.
