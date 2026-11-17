@@ -1,0 +1,38 @@
+/* NOVA installer: restrained, readable dark interface */
+QWidget {
+    color: #e7ebf2;
+    font-family: "Noto Sans", "DejaVu Sans", sans-serif;
+    font-size: 10pt;
+}
+QMainWindow, QDialog { background: #11161f; }
+QFrame { border-color: #303b4b; }
+QLabel { background: transparent; }
+QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QTextEdit, QPlainTextEdit {
+    color: #edf1f7; background: #1b2431; border: 1px solid #3a4658;
+    border-radius: 5px; padding: 6px 8px; selection-background-color: #456fa8;
+}
+QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus,
+QTextEdit:focus, QPlainTextEdit:focus { border: 1px solid #729bd0; }
+QPushButton {
+    color: #edf1f7; background: #263447; border: 1px solid #3b4b62;
+    border-radius: 5px; padding: 8px 16px;
+}
+QPushButton:hover { background: #31445d; }
+QPushButton:pressed { background: #1e2a3a; }
+QPushButton:default { color: #ffffff; background: #416da8; border-color: #5b86bd; }
+QPushButton:default:hover { background: #4e7dbb; }
+QProgressBar {
+    color: #edf1f7; background: #202a38; border: none; border-radius: 5px;
+    min-height: 10px; text-align: center;
+}
+QProgressBar::chunk { background: #6a96cc; border-radius: 5px; }
+QListView, QTreeView, QTableView {
+    color: #e7ebf2; background: #171e29; alternate-background-color: #1c2532;
+    border: 1px solid #303b4b; selection-background-color: #344d6d;
+}
+QHeaderView::section {
+    color: #e7ebf2; background: #202a38; border: none; padding: 6px;
+}
+QToolTip {
+    color: #f4f6fa; background: #202a38; border: 1px solid #46546a; padding: 4px;
+}
