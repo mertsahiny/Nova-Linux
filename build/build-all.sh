@@ -80,6 +80,14 @@ export DEBIAN_FRONTEND=noninteractive
 echo "==> Updating package lists"
 apt-get update
 
+echo "==> Adding Google's official Chrome repository"
+apt-get install -y --no-install-recommends ca-certificates curl gnupg
+install -d -m 0755 /etc/apt/keyrings
+curl -fsSL https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor --yes -o /etc/apt/keyrings/google-chrome.gpg
+chmod 0644 /etc/apt/keyrings/google-chrome.gpg
+echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/google-chrome.gpg] https://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list
+apt-get update
+
 echo "==> Enabling i386 architecture"
 dpkg --add-architecture i386
 apt-get update
@@ -145,6 +153,7 @@ apt-get install -y --no-install-recommends \
     gwenview \
     kcalc \
     discover \
+    breeze \
     pipewire \
     pipewire-audio \
     pipewire-pulse \
@@ -152,6 +161,7 @@ apt-get install -y --no-install-recommends \
     bluez \
     polkit-kde-agent-1 \
     firefox-esr \
+    google-chrome-stable \
     fastfetch \
     calamares \
     calamares-settings-debian \
@@ -236,6 +246,31 @@ Relogin=false
 [Theme]
 Current=breeze
 EOF
+
+echo "==> Setting the default KDE appearance to Breeze Dark"
+
+mkdir -p /etc/xdg /etc/skel/.config /home/nova/.config
+
+cat > /etc/xdg/kdeglobals <<'EOF'
+[General]
+ColorScheme=BreezeDark
+
+[KDE]
+LookAndFeelPackage=org.kde.breezedark.desktop
+widgetStyle=Breeze
+EOF
+
+install -D -m 0644 /etc/xdg/kdeglobals /etc/skel/.config/kdeglobals
+install -D -m 0644 /etc/xdg/kdeglobals /home/nova/.config/kdeglobals
+
+cat > /etc/xdg/plasmarc <<'EOF'
+[Theme]
+name=breeze-dark
+EOF
+
+install -D -m 0644 /etc/xdg/plasmarc /etc/skel/.config/plasmarc
+install -D -m 0644 /etc/xdg/plasmarc /home/nova/.config/plasmarc
+chown -R nova:nova /home/nova/.config
 
 echo "==> Configuring Fastfetch"
 
