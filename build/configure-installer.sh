@@ -23,6 +23,20 @@ for module_config in mount.conf unpackfs.conf users.conf bootloader.conf; do
     fi
 done
 
+OPENRC_MODULE="$(find /usr/lib -path '*/calamares/modules/services-openrc/module.desc' -print -quit)"
+if [[ -z "$OPENRC_MODULE" ]]; then
+    echo "ERROR: Calamares was built without its OpenRC services module." >&2
+    exit 1
+fi
+
+if grep -q 'services-systemd' "$SETTINGS"; then
+    sed -i 's/services-systemd/services-openrc/g' "$SETTINGS"
+fi
+if ! grep -q 'services-openrc' "$SETTINGS"; then
+    echo "ERROR: Calamares settings do not include the OpenRC services module." >&2
+    exit 1
+fi
+
 if [[ ! -s "$BRANDING_SOURCE/branding.desc" || ! -s "$BRANDING_SOURCE/stylesheet.qss" || ! -s "$BRANDING_SOURCE/nova-welcome.png" ]]; then
     echo "ERROR: NOVA Calamares branding assets are incomplete." >&2
     exit 1
