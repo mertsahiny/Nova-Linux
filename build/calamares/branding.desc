@@ -1,0 +1,34 @@
+---
+componentName: nova
+
+welcomeStyleCalamares: false
+welcomeExpandingLogo: false
+
+windowExpanding: normal
+windowSize: 1024px,680px
+windowPlacement: center
+navigation: widget
+
+strings:
+  productName: "NOVA Linux"
+  shortProductName: "NOVA"
+  version: "0.1.0"
+  shortVersion: "0.1.0"
+  versionedName: "NOVA Linux 0.1.0"
+  shortVersionedName: "NOVA 0.1.0"
+  bootloaderEntryName: "NOVA Linux"
+  productUrl: "https://github.com/mertsahiny/Nova-Linux"
+  supportUrl: "https://github.com/mertsahiny/Nova-Linux/issues"
+  knownIssuesUrl: "https://github.com/mertsahiny/Nova-Linux/issues"
+  releaseNotesUrl: "https://github.com/mertsahiny/Nova-Linux/releases"
+  donateUrl: ""
+
+images:
+  productBanner: "nova-welcome.png"
+  productWelcome: "nova-welcome.png"
+
+colors:
+  SidebarBackground: "#171d28"
+  SidebarText: "#d8dee9"
+  SidebarBackgroundCurrent: "#26364d"
+  SidebarTextCurrent: "#ffffff"
