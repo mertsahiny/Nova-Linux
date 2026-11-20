@@ -379,15 +379,34 @@ else
     echo "NOTICE: Nova Wallpaper.png not found."
 fi
 
+echo "==> Preparing the live root mount points"
+
+# live-boot mounts /dev, /proc, /sys and /run into the mounted SquashFS
+# root. Keep these directories in the image: excluding the directories
+# themselves removes the mount points and makes /init fail before switch_root.
+for mountpoint in \
+    "$ROOTFS/dev/pts" \
+    "$ROOTFS/dev" \
+    "$ROOTFS/proc" \
+    "$ROOTFS/sys"; do
+    if mountpoint -q "$mountpoint"; then
+        umount "$mountpoint"
+    fi
+done
+
+mkdir -p "$ROOTFS/dev/pts" "$ROOTFS/proc" "$ROOTFS/sys" "$ROOTFS/run" "$ROOTFS/tmp"
+chmod 0755 "$ROOTFS/dev" "$ROOTFS/dev/pts" "$ROOTFS/proc" "$ROOTFS/sys" "$ROOTFS/run" "$ROOTFS/tmp"
+
 echo "==> Building SquashFS"
 
+# Do not exclude dev/proc/sys/run/tmp: live-boot needs their empty
+# mount-point directories to exist inside the SquashFS root.
 mksquashfs \
     "$ROOTFS" \
     "$ISO_ROOT/live/filesystem.squashfs" \
     -comp xz \
     -b 1M \
-    -noappend \
-    -e dev proc sys run tmp
+    -noappend
 
 echo "==> Finding kernel and initramfs"
 
