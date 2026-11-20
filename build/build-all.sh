@@ -104,41 +104,27 @@ echo "==> Enabling i386 architecture"
 dpkg --add-architecture i386
 apt-get update
 
-echo "==> Installing OpenRC and SysVinit"
+echo "==> Installing Debian's supported systemd init stack"
 
-# Keep sysusers compatibility for Debian packages such as udev.
-# systemd is not required to be PID 1.
-apt-get --purge --allow-remove-essential install -y \
-    --no-install-recommends \
-    sysvinit-core \
-    openrc \
-    systemd-standalone-sysusers \
-    elogind \
-    libpam-elogind \
-    dbus-x11 \
-    orphan-sysvinit-scripts \
+# Use one init system consistently. Debian 13's live-config integration
+# supports systemd; mixing sysvinit-core, OpenRC and systemd compatibility
+# packages can leave PID 1 and service management in an inconsistent state.
+apt-get install -y --no-install-recommends \
+    systemd-sysv \
+    libpam-systemd \
     live-config \
-    live-config-sysvinit \
-    systemd-sysv- \
-    systemd- \
-    live-config-systemd- \
-    libpam-systemd-
+    live-config-systemd
 
 echo "==> Checking init packages"
 apt-get check
 
-if ! dpkg-query -W -f='${Status}' openrc 2>/dev/null | grep -q "install ok installed"; then
-    echo "ERROR: OpenRC is not installed." >&2
+if ! dpkg-query -W -f='${Status}' systemd-sysv 2>/dev/null | grep -q "install ok installed"; then
+    echo "ERROR: systemd-sysv is not installed." >&2
     exit 1
 fi
 
-if ! dpkg-query -W -f='${Status}' sysvinit-core 2>/dev/null | grep -q "install ok installed"; then
-    echo "ERROR: SysVinit is not installed." >&2
-    exit 1
-fi
-
-if ! dpkg-query -W -f='${Status}' systemd-standalone-sysusers 2>/dev/null | grep -q "install ok installed"; then
-    echo "ERROR: systemd-standalone-sysusers is missing." >&2
+if ! dpkg-query -W -f='${Status}' live-config-systemd 2>/dev/null | grep -q "install ok installed"; then
+    echo "ERROR: live-config-systemd is not installed." >&2
     exit 1
 fi
 
@@ -337,36 +323,21 @@ cat > /etc/xdg/fastfetch/config.jsonc <<'EOF'
 }
 EOF
 
-echo "==> Configuring OpenRC"
+echo "==> Configuring systemd services"
 
-mkdir -p /etc/runlevels/default /etc/runlevels/boot /etc/runlevels/shutdown
+# Enable services in the image without trying to start them in the chroot.
+systemctl --root=/ enable dbus.service NetworkManager.service sddm.service
 
-cat > /etc/rc.conf <<'EOF'
-rc_logger="YES"
-rc_log_path="/var/log/rc.log"
-rc_parallel="NO"
-rc_verbose="YES"
-EOF
+echo "==> Checking the systemd PID 1 executable"
 
-# Enable services only when their OpenRC init scripts exist.
-for service in dbus elogind NetworkManager sddm; do
-    if [[ -x "/etc/init.d/$service" ]]; then
-        echo "Enabling $service"
-        rc-update add "$service" default || true
-    else
-        echo "NOTICE: No OpenRC init script for $service"
-    fi
-done
-
-echo "==> Checking OpenRC executables"
-
-if [[ ! -x /sbin/openrc ]]; then
-    echo "ERROR: /sbin/openrc is missing." >&2
+if [[ ! -x /lib/systemd/systemd && ! -x /usr/lib/systemd/systemd ]]; then
+    echo "ERROR: systemd executable is missing." >&2
     exit 1
 fi
 
-if [[ ! -x /sbin/init ]]; then
-    echo "ERROR: /sbin/init is missing." >&2
+if [[ "$(readlink -f /sbin/init)" != "/lib/systemd/systemd" && "$(readlink -f /sbin/init)" != "/usr/lib/systemd/systemd" ]]; then
+    echo "ERROR: /sbin/init does not resolve to systemd." >&2
+    readlink -f /sbin/init >&2 || true
     exit 1
 fi
 
