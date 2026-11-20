@@ -54,6 +54,42 @@ jobs:
 
           sha256sum -c "$ISO.sha256"
 
+      - name: Boot-test the live ISO in QEMU
+        run: |
+          ISO="out/NOVA-Linux-$(cat VERSION)-amd64.iso"
+          LOG="$RUNNER_TEMP/nova-qemu-boot.log"
+
+          # Give the live kernel and PID 1 a serial console so the CI runner
+          # can verify that the system reaches userspace, not just that the
+          # ISO contains files with the expected names.
+          set +e
+          timeout 180s qemu-system-x86_64 \
+            -machine accel=tcg \
+            -m 4096 \
+            -smp 2 \
+            -display none \
+            -serial stdio \
+            -monitor none \
+            -no-reboot \
+            -no-shutdown \
+            -boot d \
+            -cdrom "$ISO" \
+            > "$LOG" 2>&1
+          QEMU_STATUS=$?
+          set -e
+
+          cat "$LOG"
+
+          if grep -qE 'Kernel panic|Attempted to kill init' "$LOG"; then
+            echo "ERROR: NOVA live boot panicked in QEMU." >&2
+            exit 1
+          fi
+
+          if ! grep -qE 'Reached target (Graphical Interface|Multi-User System)|Started Display Manager' "$LOG"; then
+            echo "ERROR: QEMU did not confirm that NOVA reached userspace (QEMU exit: $QEMU_STATUS)." >&2
+            exit 1
+          fi
+
       - name: Upload ISO artifact
         uses: actions/upload-artifact@v4
         with:
