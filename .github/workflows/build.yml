@@ -80,15 +80,22 @@ jobs:
 
           cat "$LOG"
 
-          if grep -qE 'Kernel panic|Attempted to kill init' "$LOG"; then
+          # Strip ANSI/terminal control sequences before checking systemd
+          # messages; otherwise colour codes split words such as "Reached".
+          CLEAN_LOG="$RUNNER_TEMP/nova-qemu-boot-clean.log"
+          sed -E 's/\x1B\[[0-9;?]*[ -/]*[@-~]//g' "$LOG" > "$CLEAN_LOG"
+
+          if grep -qiE 'Kernel panic|Attempted to kill init' "$CLEAN_LOG"; then
             echo "ERROR: NOVA live boot panicked in QEMU." >&2
             exit 1
           fi
 
-          if ! grep -qE 'Reached target (Graphical Interface|Multi-User System)|Started Display Manager' "$LOG"; then
+          if ! grep -qiE 'Reached target (graphical.target|multi-user.target|Graphical Interface|Multi-User System)|Started sddm.service|Started Display Manager' "$CLEAN_LOG"; then
             echo "ERROR: QEMU did not confirm that NOVA reached userspace (QEMU exit: $QEMU_STATUS)." >&2
             exit 1
           fi
+
+          echo "SUCCESS: NOVA reached systemd userspace and started its display manager."
 
       - name: Upload ISO artifact
         uses: actions/upload-artifact@v4
