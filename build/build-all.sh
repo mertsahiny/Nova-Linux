@@ -198,6 +198,9 @@ echo "==> Installing gaming packages"
 apt-get install -y --no-install-recommends \
     steam-installer \
     lutris \
+    pipx \
+    python3-venv \
+    zenity \
     wine \
     wine64 \
     wine32 \
@@ -208,6 +211,14 @@ apt-get install -y --no-install-recommends \
     libglx-mesa0:i386 \
     mesa-vulkan-drivers:i386 \
     libvulkan1:i386
+
+echo "==> Installing Protontricks"
+
+# Debian Trixie does not currently ship protontricks. Install it in an
+# isolated pipx environment instead of mixing packages from Debian sid.
+pipx install --global protontricks
+command -v protontricks
+protontricks --help >/dev/null
 
 echo "==> Configuring locale"
 
