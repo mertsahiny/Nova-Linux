@@ -140,6 +140,11 @@ apt-get install -y --no-install-recommends \
     linux-image-amd64 \
     live-boot \
     network-manager \
+    wpasupplicant \
+    wireless-regdb \
+    rfkill \
+    iproute2 \
+    iputils-ping \
     xserver-xorg \
     sddm \
     kde-plasma-desktop \
@@ -178,6 +183,9 @@ apt-get install -y --no-install-recommends \
     firmware-amd-graphics \
     firmware-iwlwifi \
     firmware-realtek \
+    firmware-atheros \
+    firmware-brcm80211 \
+    firmware-mediatek \
     mesa-utils \
     libgl1-mesa-dri \
     libglx-mesa0 \
@@ -323,10 +331,24 @@ cat > /etc/xdg/fastfetch/config.jsonc <<'EOF'
 }
 EOF
 
-echo "==> Configuring systemd services"
+echo "==> Configuring NetworkManager"
+
+# Ensure NetworkManager can manage interfaces on live hardware and in QEMU.
+install -d -m 0755 /etc/NetworkManager/conf.d
+cat > /etc/NetworkManager/conf.d/10-nova-managed.conf <<'EOF'
+[ifupdown]
+managed=true
+EOF
 
 # Enable services in the image without trying to start them in the chroot.
 systemctl --root=/ enable dbus.service NetworkManager.service sddm.service
+
+# Fail the image build if Chrome or its desktop launcher is missing.
+echo "==> Verifying Google Chrome installation"
+dpkg-query -W -f='${Status}' google-chrome-stable | grep -q "install ok installed"
+test -x /usr/bin/google-chrome-stable
+test -s /usr/share/applications/google-chrome.desktop
+google-chrome-stable --version
 
 echo "==> Checking the systemd PID 1 executable"
 
