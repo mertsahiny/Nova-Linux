@@ -39,6 +39,32 @@ if ! grep -q 'services-openrc' "$SETTINGS"; then
     exit 1
 fi
 
+DISPLAY_MANAGER_SERVICE="${NOVA_DISPLAY_MANAGER_SERVICE:-sddm}"
+case "$DISPLAY_MANAGER_SERVICE" in
+    sddm|lightdm|gdm3) ;;
+    *)
+        echo "ERROR: Unsupported NOVA display manager service: $DISPLAY_MANAGER_SERVICE" >&2
+        exit 1
+        ;;
+esac
+
+# Ensure the installed system enables the same core services and display
+# manager as the live edition. Calamares runs rc-update in the target root.
+cat > /etc/calamares/modules/services-openrc.conf <<EOF
+initdDir: /etc/init.d
+runlevelsDir: /etc/runlevels
+services:
+  - name: dbus
+    mandatory: true
+  - name: elogind
+    mandatory: true
+  - name: network-manager
+    mandatory: true
+  - name: $DISPLAY_MANAGER_SERVICE
+    mandatory: true
+disable: []
+EOF
+
 if [[ ! -s "$BRANDING_SOURCE/branding.desc" || ! -s "$BRANDING_SOURCE/stylesheet.qss" || ! -s "$BRANDING_SOURCE/nova-welcome.png" ]]; then
     echo "ERROR: NOVA Calamares branding assets are incomplete." >&2
     exit 1
