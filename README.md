@@ -2,12 +2,12 @@
 
 **Sürüm:** 0.1.0 — **Kod adı:** Supernova
 
-Debian 13 Trixie temel alınarak geliştirilen bir Linux dağıtımıdır.
+Debian 13 Trixie temel alınarak geliştirilen bir Linux dağıtımıdır(distro). 
 
 ## Masaüstü sürümleri
 
 - KDE Plasma 6
-- GNOME (OpenRC üzerinde açılış ve oturum testleri tamamlanana kadar deneysel)
+- GNOME (OpenRC üzerinde açılış ve oturum testleri tamamlanana kadar experimental)
 - Xfce
 - Cinnamon
 - LXQt
@@ -48,6 +48,6 @@ sudo env NOVA_INIT=openrc NOVA_DESKTOP=kde bash build/build-one.sh
 sudo env NOVA_INIT=systemd NOVA_DESKTOP=xfce bash build/build-one.sh
 ```
 
-NOVA, değiştirilmiş hazır ISO dosyaları yerine debootstrap kullanılarak, ana dağıtımın bileşenlerinden oluşturulur.
+NOVA, değiştirilmiş hazır ISO dosyaları yerine debootstrap kullanılarak, ana dağıtımın(distro) bileşenlerinden oluşturulur.
 
 Derleme aşamaları ve hedefler için `TODO.md` dosyasına göz atın.
