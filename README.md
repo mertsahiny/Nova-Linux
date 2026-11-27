@@ -11,7 +11,7 @@ A Debian-derived Linux distribution.
 - Desktop editions: KDE Plasma 6, GNOME (experimental), Xfce, Cinnamon, LXQt, LXDE, MATE
 - Default desktop: KDE Plasma 6
 - Init: OpenRC service manager with Debian Trixie `sysvinit-core` as PID 1
-- Default display manager: SDDM
+- Default KDE display manager: SDDM
 - Bootloader: GRUB
 - Installer: Calamares
 
