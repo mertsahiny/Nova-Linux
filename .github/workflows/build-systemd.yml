@@ -1,0 +1,76 @@
+name: NOVA Linux systemd editions
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+  schedule:
+    - cron: "0 2 * * 0"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: systemd / ${{ matrix.desktop }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        desktop: [kde, gnome, xfce, cinnamon, lxqt, lxde, mate]
+    steps:
+      - uses: actions/checkout@v4
+        name: Checkout NOVA
+      - name: Free runner disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          df -h /
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y debootstrap squashfs-tools xorriso \
+            grub-pc-bin grub-efi-amd64-bin grub-common mtools qemu-system-x86
+      - name: Build systemd ISO
+        run: |
+          sudo mkdir -p out
+          sudo env NOVA_VERSION="$(cat VERSION)" NOVA_INIT=systemd \
+            NOVA_DESKTOP="${{ matrix.desktop }}" bash build/build-one.sh
+      - name: Validate ISO and checksum
+        run: |
+          ISO="out/NOVA-Linux-$(cat VERSION)-systemd-${{ matrix.desktop }}-amd64.iso"
+          test -s "$ISO"
+          test -s "$ISO.sha256"
+          xorriso -indev "$ISO" -ls /live > "$RUNNER_TEMP/live-files.txt"
+          grep -q filesystem.squashfs "$RUNNER_TEMP/live-files.txt"
+          xorriso -indev "$ISO" -report_el_torito plain
+          sha256sum -c "$ISO.sha256"
+      - name: Boot-test KDE live ISO
+        if: matrix.desktop == 'kde'
+        run: |
+          ISO="out/NOVA-Linux-$(cat VERSION)-systemd-kde-amd64.iso"
+          LOG="$RUNNER_TEMP/nova-systemd-boot.log"
+          set +e
+          timeout 180s qemu-system-x86_64 -machine accel=tcg -m 4096 -smp 2 \
+            -display none -serial stdio -monitor none -no-reboot -no-shutdown \
+            -boot d -cdrom "$ISO" > "$LOG" 2>&1
+          QEMU_STATUS=$?
+          set -e
+          cat "$LOG"
+          if grep -qiE 'Kernel panic|Attempted to kill init' "$LOG"; then
+            echo "ERROR: NOVA live boot panicked." >&2
+            exit 1
+          fi
+          if ! grep -qiE 'systemd|Reached target.*(Basic|Multi-User)|Started.*Network Manager' "$LOG"; then
+            echo "ERROR: Could not confirm systemd boot (QEMU exit: $QEMU_STATUS)." >&2
+            exit 1
+          fi
+      - name: Upload ISO artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: NOVA-systemd-${{ matrix.desktop }}-${{ github.sha }}
+          path: |
+            out/NOVA-Linux-*-amd64.iso
+            out/NOVA-Linux-*-amd64.iso.sha256
+          if-no-files-found: error
+          retention-days: 14
