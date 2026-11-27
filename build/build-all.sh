@@ -107,11 +107,12 @@ apt-get update
 
 echo "==> Installing the NOVA OpenRC init stack"
 
-# OpenRC is the service manager and openrc-init is PID 1. Debian Trixie
-# protects systemd-sysv as an essential package, so explicitly allow its
-# removal while installing the non-systemd live-config backend.
+# Debian Trixie ships OpenRC as the service manager, while its
+# openrc-init binary is not packaged in this release. Use sysvinit-core
+# as PID 1 and OpenRC for runlevel/service management.
 apt-get --allow-remove-essential install -y --no-install-recommends \
     openrc \
+    sysvinit-core \
     elogind \
     libpam-elogind \
     orphan-sysvinit-scripts \
@@ -123,8 +124,18 @@ apt-get --allow-remove-essential install -y --no-install-recommends \
 echo "==> Checking init packages"
 apt-get check
 
-if ! command -v openrc-init >/dev/null 2>&1; then
-    echo "ERROR: openrc-init is not installed." >&2
+if ! command -v rc-update >/dev/null 2>&1; then
+    echo "ERROR: OpenRC rc-update is not installed." >&2
+    exit 1
+fi
+
+if ! dpkg-query -W -f='${Status}' sysvinit-core 2>/dev/null | grep -q "install ok installed"; then
+    echo "ERROR: sysvinit-core is not installed as the Trixie PID 1 provider." >&2
+    exit 1
+fi
+
+if readlink -f /sbin/init | grep -q systemd; then
+    echo "ERROR: /sbin/init still resolves to systemd." >&2
     exit 1
 fi
 
@@ -410,13 +421,6 @@ rc-update add elogind default
 rc-update add network-manager default
 rc-update add "$DISPLAY_MANAGER_SERVICE" default
 
-# openrc-init does not spawn gettys itself; provide text consoles on tty2-tty6.
-for tty in 2 3 4 5 6; do
-    if [[ ! -e "/etc/init.d/agetty.tty$tty" ]]; then
-        ln -s agetty "/etc/init.d/agetty.tty$tty"
-    fi
-    rc-update add "agetty.tty$tty" default
-done
 
 # Fail the image build if Chrome or its desktop launcher is missing.
 echo "==> Verifying Google Chrome installation"
@@ -425,8 +429,13 @@ test -x /usr/bin/google-chrome-stable
 test -s /usr/share/applications/google-chrome.desktop
 google-chrome-stable --version
 
-echo "==> Checking the OpenRC PID 1 executable"
-test -x /sbin/openrc-init || test -x /usr/sbin/openrc-init
+echo "==> Checking the OpenRC service manager and SysV init"
+command -v rc-update >/dev/null 2>&1
+command -v /sbin/init >/dev/null 2>&1
+if readlink -f /sbin/init | grep -q systemd; then
+    echo "ERROR: systemd is still selected as PID 1." >&2
+    exit 1
+fi
 
 
 echo "==> Cleaning package cache"
