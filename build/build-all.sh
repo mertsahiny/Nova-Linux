@@ -7,6 +7,7 @@ ISO_ROOT="${ISO_ROOT:-/nova-iso}"
 OUT_DIR="${OUT_DIR:-$PWD/out}"
 VERSION="${NOVA_VERSION:-0.1.0}"
 ARCH="amd64"
+DESKTOP="${NOVA_DESKTOP:-kde}"
 MIRROR="${DEBIAN_MIRROR:-https://deb.debian.org/debian}"
 
 if [[ "$EUID" -ne 0 ]]; then
@@ -86,7 +87,7 @@ chmod +x "$ROOTFS/usr/sbin/policy-rc.d"
 
 echo "==> Entering Debian chroot"
 
-chroot "$ROOTFS" /bin/bash -e <<'CHROOT'
+chroot "$ROOTFS" env NOVA_DESKTOP="$DESKTOP" /bin/bash -e <<'CHROOT'
 export DEBIAN_FRONTEND=noninteractive
 
 echo "==> Updating package lists"
@@ -104,29 +105,85 @@ echo "==> Enabling i386 architecture"
 dpkg --add-architecture i386
 apt-get update
 
-echo "==> Installing Debian's supported systemd init stack"
+echo "==> Installing the NOVA OpenRC init stack"
 
-# Use one init system consistently. Debian 13's live-config integration
-# supports systemd; mixing sysvinit-core, OpenRC and systemd compatibility
-# packages can leave PID 1 and service management in an inconsistent state.
-apt-get install -y --no-install-recommends \
-    systemd-sysv \
-    libpam-systemd \
+# OpenRC is the service manager and openrc-init is PID 1. Debian Trixie
+# protects systemd-sysv as an essential package, so explicitly allow its
+# removal while installing the non-systemd live-config backend.
+apt-get --allow-remove-essential install -y --no-install-recommends \
+    openrc \
+    elogind \
+    libpam-elogind \
+    orphan-sysvinit-scripts \
     live-config \
-    live-config-systemd
+    live-config-sysvinit \
+    systemd-sysv- \
+    systemd-
 
 echo "==> Checking init packages"
 apt-get check
 
-if ! dpkg-query -W -f='${Status}' systemd-sysv 2>/dev/null | grep -q "install ok installed"; then
-    echo "ERROR: systemd-sysv is not installed." >&2
+if ! command -v openrc-init >/dev/null 2>&1; then
+    echo "ERROR: openrc-init is not installed." >&2
     exit 1
 fi
 
-if ! dpkg-query -W -f='${Status}' live-config-systemd 2>/dev/null | grep -q "install ok installed"; then
-    echo "ERROR: live-config-systemd is not installed." >&2
+if ! dpkg-query -W -f='${Status}' live-config-sysvinit 2>/dev/null | grep -q "install ok installed"; then
+    echo "ERROR: live-config-sysvinit is not installed." >&2
     exit 1
 fi
+
+echo "==> Selecting NOVA desktop edition: $NOVA_DESKTOP"
+
+case "$NOVA_DESKTOP" in
+    kde)
+        DISPLAY_MANAGER="sddm"
+        DISPLAY_MANAGER_SERVICE="sddm"
+        DESKTOP_PACKAGES=(kde-plasma-desktop dolphin konsole kate systemsettings ark gwenview kcalc discover breeze polkit-kde-agent-1)
+        SESSION_FILE="plasma.desktop"
+        ;;
+    gnome)
+        echo "WARNING: GNOME on OpenRC is experimental; Debian documents known compatibility issues."
+        DISPLAY_MANAGER="gdm3"
+        DISPLAY_MANAGER_SERVICE="gdm3"
+        DESKTOP_PACKAGES=(gnome-core gnome-shell gnome-session)
+        SESSION_FILE="gnome.desktop"
+        ;;
+    xfce)
+        DISPLAY_MANAGER="lightdm"
+        DISPLAY_MANAGER_SERVICE="lightdm"
+        DESKTOP_PACKAGES=(xfce4 xfce4-goodies thunar xfce4-terminal lightdm-gtk-greeter)
+        SESSION_FILE="xfce.desktop"
+        ;;
+    cinnamon)
+        DISPLAY_MANAGER="lightdm"
+        DISPLAY_MANAGER_SERVICE="lightdm"
+        DESKTOP_PACKAGES=(cinnamon-desktop-environment lightdm-gtk-greeter)
+        SESSION_FILE="cinnamon.desktop"
+        ;;
+    lxqt)
+        DISPLAY_MANAGER="sddm"
+        DISPLAY_MANAGER_SERVICE="sddm"
+        DESKTOP_PACKAGES=(lxqt)
+        SESSION_FILE="lxqt.desktop"
+        ;;
+    lxde)
+        DISPLAY_MANAGER="lightdm"
+        DISPLAY_MANAGER_SERVICE="lightdm"
+        DESKTOP_PACKAGES=(lxde lightdm-gtk-greeter)
+        SESSION_FILE="LXDE.desktop"
+        ;;
+    mate)
+        DISPLAY_MANAGER="lightdm"
+        DISPLAY_MANAGER_SERVICE="lightdm"
+        DESKTOP_PACKAGES=(mate-desktop-environment-core mate-desktop-environment-extras caja mate-terminal lightdm-gtk-greeter)
+        SESSION_FILE="mate.desktop"
+        ;;
+    *)
+        echo "ERROR: Unknown NOVA_DESKTOP: $NOVA_DESKTOP" >&2
+        exit 1
+        ;;
+esac
 
 echo "==> Installing desktop and live system"
 
@@ -146,17 +203,8 @@ apt-get install -y --no-install-recommends \
     iproute2 \
     iputils-ping \
     xserver-xorg \
-    sddm \
-    kde-plasma-desktop \
-    dolphin \
-    konsole \
-    kate \
-    systemsettings \
-    ark \
-    gwenview \
-    kcalc \
-    discover \
-    breeze \
+    "$DISPLAY_MANAGER" \
+    "${DESKTOP_PACKAGES[@]}" \
     pipewire \
     pipewire-audio \
     pipewire-pulse \
@@ -253,25 +301,32 @@ ID_LIKE=debian
 VERSION_CODENAME=trixie
 EOF
 
-echo "==> Configuring SDDM"
+echo "==> Configuring the selected display manager"
 
-mkdir -p /etc/sddm.conf.d
-
-cat > /etc/sddm.conf.d/nova.conf <<'EOF'
+if [[ "$DISPLAY_MANAGER" == "sddm" ]]; then
+    mkdir -p /etc/sddm.conf.d
+    cat > /etc/sddm.conf.d/nova.conf <<EOF
 [Autologin]
 User=nova
-Session=plasma.desktop
+Session=$SESSION_FILE
 Relogin=false
 
 [Theme]
 Current=breeze
 EOF
+elif [[ "$DISPLAY_MANAGER" == "lightdm" ]]; then
+    install -d -m 0755 /etc/lightdm/lightdm.conf.d
+    cat > /etc/lightdm/lightdm.conf.d/50-nova.conf <<EOF
+[Seat:*]
+autologin-user=nova
+autologin-session=$SESSION_FILE
+EOF
+fi
 
-echo "==> Setting the default KDE appearance to Breeze Dark"
-
-mkdir -p /etc/xdg /etc/skel/.config /home/nova/.config
-
-cat > /etc/xdg/kdeglobals <<'EOF'
+if [[ "$NOVA_DESKTOP" == "kde" ]]; then
+    echo "==> Setting the default KDE appearance to Breeze Dark"
+    mkdir -p /etc/xdg /etc/skel/.config /home/nova/.config
+    cat > /etc/xdg/kdeglobals <<'EOF'
 [General]
 ColorScheme=BreezeDark
 
@@ -279,17 +334,15 @@ ColorScheme=BreezeDark
 LookAndFeelPackage=org.kde.breezedark.desktop
 widgetStyle=Breeze
 EOF
-
-install -D -m 0644 /etc/xdg/kdeglobals /etc/skel/.config/kdeglobals
-install -D -m 0644 /etc/xdg/kdeglobals /home/nova/.config/kdeglobals
-
-cat > /etc/xdg/plasmarc <<'EOF'
+    install -D -m 0644 /etc/xdg/kdeglobals /etc/skel/.config/kdeglobals
+    install -D -m 0644 /etc/xdg/kdeglobals /home/nova/.config/kdeglobals
+    cat > /etc/xdg/plasmarc <<'EOF'
 [Theme]
 name=breeze-dark
 EOF
-
-install -D -m 0644 /etc/xdg/plasmarc /etc/skel/.config/plasmarc
-install -D -m 0644 /etc/xdg/plasmarc /home/nova/.config/plasmarc
+    install -D -m 0644 /etc/xdg/plasmarc /etc/skel/.config/plasmarc
+    install -D -m 0644 /etc/xdg/plasmarc /home/nova/.config/plasmarc
+fi
 chown -R nova:nova /home/nova/.config
 
 echo "==> Configuring Fastfetch"
@@ -351,8 +404,19 @@ cat > /etc/NetworkManager/conf.d/10-nova-managed.conf <<'EOF'
 managed=true
 EOF
 
-# Enable services in the image without trying to start them in the chroot.
-systemctl --root=/ enable dbus.service NetworkManager.service sddm.service
+# Register services with OpenRC without starting them inside the chroot.
+rc-update add dbus default
+rc-update add elogind default
+rc-update add network-manager default
+rc-update add "$DISPLAY_MANAGER_SERVICE" default
+
+# openrc-init does not spawn gettys itself; provide text consoles on tty2-tty6.
+for tty in 2 3 4 5 6; do
+    if [[ ! -e "/etc/init.d/agetty.tty$tty" ]]; then
+        ln -s agetty "/etc/init.d/agetty.tty$tty"
+    fi
+    rc-update add "agetty.tty$tty" default
+done
 
 # Fail the image build if Chrome or its desktop launcher is missing.
 echo "==> Verifying Google Chrome installation"
@@ -361,18 +425,9 @@ test -x /usr/bin/google-chrome-stable
 test -s /usr/share/applications/google-chrome.desktop
 google-chrome-stable --version
 
-echo "==> Checking the systemd PID 1 executable"
+echo "==> Checking the OpenRC PID 1 executable"
+test -x /sbin/openrc-init || test -x /usr/sbin/openrc-init
 
-if [[ ! -x /lib/systemd/systemd && ! -x /usr/lib/systemd/systemd ]]; then
-    echo "ERROR: systemd executable is missing." >&2
-    exit 1
-fi
-
-if [[ "$(readlink -f /sbin/init)" != "/lib/systemd/systemd" && "$(readlink -f /sbin/init)" != "/usr/lib/systemd/systemd" ]]; then
-    echo "ERROR: /sbin/init does not resolve to systemd." >&2
-    readlink -f /sbin/init >&2 || true
-    exit 1
-fi
 
 echo "==> Cleaning package cache"
 apt-get clean
