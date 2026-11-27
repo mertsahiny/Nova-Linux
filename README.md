@@ -1,51 +1,53 @@
 # NOVA Linux
 
-Version 0.1.0 - Codename: Supernova
+**Sürüm:** 0.1.0 — **Kod adı:** Supernova
 
-A Debian-derived Linux distribution built from Debian 13 Trixie.
+Debian 13 Trixie temel alınarak geliştirilen bir Linux dağıtımıdır.
 
-## Desktop editions
+## Masaüstü sürümleri
 
 - KDE Plasma 6
-- GNOME (experimental on OpenRC until its boot and session tests pass)
+- GNOME (OpenRC üzerinde açılış ve oturum testleri tamamlanana kadar deneysel)
 - Xfce
 - Cinnamon
 - LXQt
 - LXDE
 - MATE
 
-## Init systems
+## Başlatma sistemleri (Init)
 
-NOVA has two separately built init variants:
+NOVA, birbirinden ayrı iki başlatma sistemi sürümüyle derlenir:
 
-- **OpenRC:** OpenRC manages services and runlevels; Debian Trixie's `sysvinit-core` provides PID 1.
-- **systemd:** systemd provides PID 1 and manages system services.
+- **OpenRC:** Servisleri ve çalışma seviyelerini OpenRC yönetir. Debian Trixie'nin `sysvinit-core` paketi PID 1 görevini üstlenir.
+- **systemd:** PID 1 görevini üstlenir ve sistem servislerini yönetir.
 
-Each init variant has its own GitHub Actions workflow. Each workflow builds all seven desktop editions. ISO names use:
+Her başlatma sistemi için ayrı bir GitHub Actions iş akışı bulunur. Her iş akışı yedi masaüstü sürümünün tamamını derler.
 
-`NOVA-Linux-<version>-<init>-<desktop>-amd64.iso`
+ISO dosyaları şu adlandırma biçimini kullanır:
 
-## Build locally
+`NOVA-Linux-<sürüm>-<init>-<masaüstü>-amd64.iso`
 
-Build all OpenRC editions:
+## Yerel derleme
+
+Tüm OpenRC sürümlerini derlemek için:
 
 ```bash
 sudo bash build/build-openrc.sh
 ```
 
-Build all systemd editions:
+Tüm systemd sürümlerini derlemek için:
 
 ```bash
 sudo bash build/build-systemd.sh
 ```
 
-Build one edition:
+Tek bir sürüm derlemek için:
 
 ```bash
 sudo env NOVA_INIT=openrc NOVA_DESKTOP=kde bash build/build-one.sh
 sudo env NOVA_INIT=systemd NOVA_DESKTOP=xfce bash build/build-one.sh
 ```
 
-NOVA is assembled from upstream components using debootstrap, not modified ISOs.
+NOVA, değiştirilmiş hazır ISO dosyaları yerine debootstrap kullanılarak, ana dağıtımın bileşenlerinden oluşturulur.
 
-See TODO.md for build phases and milestones.
+Derleme aşamaları ve hedefler için `TODO.md` dosyasına göz atın.
