@@ -230,7 +230,7 @@ apt-get install -y --no-install-recommends \
     squashfs-tools
 
 echo "==> Applying NOVA Calamares configuration"
-bash /tmp/nova-configure-installer.sh
+NOVA_DISPLAY_MANAGER_SERVICE="$DISPLAY_MANAGER_SERVICE" bash /tmp/nova-configure-installer.sh
 
 echo "==> Installing firmware and graphics"
 
