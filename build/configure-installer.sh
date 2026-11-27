@@ -23,19 +23,19 @@ for module_config in mount.conf unpackfs.conf users.conf bootloader.conf; do
     fi
 done
 
-SYSTEMD_MODULE="$(find /usr/lib -path '*/calamares/modules/services-systemd/module.desc' -print -quit)"
-if [[ -z "$SYSTEMD_MODULE" ]]; then
-    echo "ERROR: Calamares was built without its systemd services module." >&2
+SERVICES_MODULE="$(find /usr/lib -path '*/calamares/modules/services-openrc/module.desc' -print -quit)"
+if [[ -z "$SERVICES_MODULE" ]]; then
+    echo "ERROR: Calamares was built without its OpenRC services module." >&2
     exit 1
 fi
 
-# NOVA uses systemd as PID 1, so Calamares must configure services through
-# the matching systemd module rather than the obsolete OpenRC module.
-if grep -q 'services-openrc' "$SETTINGS"; then
-    sed -i 's/services-openrc/services-systemd/g' "$SETTINGS"
+# NOVA uses OpenRC. Ensure Calamares enables services through rc-update
+# instead of trying to manipulate systemd units in the installed system.
+if grep -q 'services-systemd' "$SETTINGS"; then
+    sed -i 's/services-systemd/services-openrc/g' "$SETTINGS"
 fi
-if ! grep -q 'services-systemd' "$SETTINGS"; then
-    echo "ERROR: Calamares settings do not include the systemd services module." >&2
+if ! grep -q 'services-openrc' "$SETTINGS"; then
+    echo "ERROR: Calamares settings do not include the OpenRC services module." >&2
     exit 1
 fi
 
