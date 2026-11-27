@@ -23,21 +23,47 @@ for module_config in mount.conf unpackfs.conf users.conf bootloader.conf; do
     fi
 done
 
-SYSTEMD_MODULE="$(find /usr/lib -path '*/calamares/modules/services-systemd/module.desc' -print -quit)"
-if [[ -z "$SYSTEMD_MODULE" ]]; then
-    echo "ERROR: Calamares was built without its systemd services module." >&2
+SERVICES_MODULE="$(find /usr/lib -path '*/calamares/modules/services-openrc/module.desc' -print -quit)"
+if [[ -z "$SERVICES_MODULE" ]]; then
+    echo "ERROR: Calamares was built without its OpenRC services module." >&2
     exit 1
 fi
 
-# NOVA uses systemd as PID 1, so Calamares must configure services through
-# the matching systemd module rather than the obsolete OpenRC module.
-if grep -q 'services-openrc' "$SETTINGS"; then
-    sed -i 's/services-openrc/services-systemd/g' "$SETTINGS"
+# NOVA uses OpenRC. Ensure Calamares enables services through rc-update
+# instead of trying to manipulate systemd units in the installed system.
+if grep -q 'services-systemd' "$SETTINGS"; then
+    sed -i 's/services-systemd/services-openrc/g' "$SETTINGS"
 fi
-if ! grep -q 'services-systemd' "$SETTINGS"; then
-    echo "ERROR: Calamares settings do not include the systemd services module." >&2
+if ! grep -q 'services-openrc' "$SETTINGS"; then
+    echo "ERROR: Calamares settings do not include the OpenRC services module." >&2
     exit 1
 fi
+
+DISPLAY_MANAGER_SERVICE="${NOVA_DISPLAY_MANAGER_SERVICE:-sddm}"
+case "$DISPLAY_MANAGER_SERVICE" in
+    sddm|lightdm|gdm3) ;;
+    *)
+        echo "ERROR: Unsupported NOVA display manager service: $DISPLAY_MANAGER_SERVICE" >&2
+        exit 1
+        ;;
+esac
+
+# Ensure the installed system enables the same core services and display
+# manager as the live edition. Calamares runs rc-update in the target root.
+cat > /etc/calamares/modules/services-openrc.conf <<EOF
+initdDir: /etc/init.d
+runlevelsDir: /etc/runlevels
+services:
+  - name: dbus
+    mandatory: true
+  - name: elogind
+    mandatory: true
+  - name: network-manager
+    mandatory: true
+  - name: $DISPLAY_MANAGER_SERVICE
+    mandatory: true
+disable: []
+EOF
 
 if [[ ! -s "$BRANDING_SOURCE/branding.desc" || ! -s "$BRANDING_SOURCE/stylesheet.qss" || ! -s "$BRANDING_SOURCE/nova-welcome.png" ]]; then
     echo "ERROR: NOVA Calamares branding assets are incomplete." >&2
