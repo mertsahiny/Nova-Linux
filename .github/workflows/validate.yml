@@ -21,14 +21,20 @@ jobs:
       - name: Validate shell scripts and Calamares branding
         run: |
           bash -n build/build-all.sh
-          bash -n build/configure-installer.sh
+          bash -n build/build-one.sh
+          bash -n build/build-openrc.sh
+          bash -n build/build-systemd.sh
+          bash -n build/configure-installer-openrc.sh
+          bash -n build/configure-installer-systemd.sh
           test -s build/calamares/branding.desc
           test -s build/calamares/stylesheet.qss
           grep -q 'componentName: nova' build/calamares/branding.desc
-          grep -q 'nova-configure-installer.sh' build/build-all.sh
-          grep -q 'google-chrome-stable' build/build-all.sh
-          grep -q 'firefox-esr' build/build-all.sh
-          grep -q 'ColorScheme=BreezeDark' build/build-all.sh
+          grep -q 'configure-installer-\${INIT}.sh' build/build-one.sh
+          grep -q 'google-chrome-stable' build/build-one.sh
+          grep -q 'firefox-esr' build/build-one.sh
+          grep -q 'ColorScheme=BreezeDark' build/build-one.sh
+          grep -q 'desktop: \\[kde, gnome, xfce, cinnamon, lxqt, lxde, mate\\]' .github/workflows/build-openrc.yml
+          grep -q 'desktop: \\[kde, gnome, xfce, cinnamon, lxqt, lxde, mate\\]' .github/workflows/build-systemd.yml
 
       - name: Validate project structure
         run: |
@@ -110,7 +116,7 @@ jobs:
 
       - name: Validate GitHub Actions workflows
         run: |
-          workflows=(".github/workflows/build.yml" ".github/workflows/validate.yml")
+          workflows=(".github/workflows/build-openrc.yml" ".github/workflows/build-systemd.yml" ".github/workflows/validate.yml")
           for workflow in "${workflows[@]}"; do
             if [ -f "$workflow" ]; then
               echo " [OK] $workflow exists"
