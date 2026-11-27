@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-# Build one NOVA ISO. NOVA_INIT=openrc|systemd; NOVA_DESKTOP=kde|gnome|xfce|cinnamon|lxqt|lxde|mate.
-
-#!/usr/bin/env bash
 set -Eeuo pipefail
 
 INIT="${NOVA_INIT:-openrc}"
