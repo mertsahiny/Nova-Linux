@@ -104,7 +104,7 @@ jobs:
             exit 1
           fi
 
-          if ! grep -qiE 'openrc-init|OpenRC|starting default runlevel' "$CLEAN_LOG"; then
+          if ! grep -qiE 'OpenRC|Starting (sddm|lightdm|gdm3)|Starting .*network-manager|Runlevel: default' "$CLEAN_LOG"; then
             echo "ERROR: QEMU did not confirm that NOVA started OpenRC (QEMU exit: $QEMU_STATUS)." >&2
             exit 1
           fi
