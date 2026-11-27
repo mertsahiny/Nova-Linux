@@ -289,7 +289,10 @@ if ! id nova >/dev/null 2>&1; then
     useradd -m -s /bin/bash -G sudo,audio,video,plugdev nova
 fi
 
-passwd -l nova || true
+# The live desktop must be able to start an automatic graphical session.
+# An empty password is intentional for this temporary live-only account;
+# the installed user's password is configured separately by Calamares.
+passwd -d nova
 
 mkdir -p /etc/sudoers.d
 printf 'nova ALL=(ALL) NOPASSWD: ALL\n' > /etc/sudoers.d/90-nova-live
@@ -325,7 +328,21 @@ elif [[ "$DISPLAY_MANAGER" == "lightdm" ]]; then
     cat > /etc/lightdm/lightdm.conf.d/50-nova.conf <<EOF
 [Seat:*]
 autologin-user=nova
-autologin-session=$SESSION_FILE
+autologin-user-timeout=0
+autologin-session=${SESSION_FILE%.desktop}
+user-session=${SESSION_FILE%.desktop}
+greeter-session=lightdm-gtk-greeter
+EOF
+
+    # Give LightDM's GTK greeter NOVA's wallpaper and a dark GTK theme.
+    install -d -m 0755 /etc/lightdm/lightdm-gtk-greeter.conf.d
+    cat > /etc/lightdm/lightdm-gtk-greeter.conf.d/50-nova.conf <<'EOF'
+[greeter]
+background=/usr/share/wallpapers/Vibes/Nova Wallpaper.png
+user-background=false
+theme-name=Adwaita-dark
+icon-theme-name=Adwaita
+xft-antialias=true
 EOF
 fi
 
