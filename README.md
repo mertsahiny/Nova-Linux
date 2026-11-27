@@ -10,7 +10,7 @@ A Debian-derived Linux distribution.
 - Upstream: Debian 13 Trixie
 - Desktop editions: KDE Plasma 6, GNOME (experimental), Xfce, Cinnamon, LXQt, LXDE, MATE
 - Default desktop: KDE Plasma 6
-- Init: OpenRC (`openrc-init` as PID 1)
+- Init: OpenRC service manager with Debian Trixie `sysvinit-core` as PID 1
 - Default display manager: SDDM
 - Bootloader: GRUB
 - Installer: Calamares
@@ -23,6 +23,6 @@ NOVA is assembled from upstream components using debootstrap, not modified ISOs.
 
 Desktop editions are selected with `NOVA_DESKTOP` (default: `kde`). Use the matching wrapper in `build/editions/` or dispatch the GitHub Actions build workflow and choose an edition.
 
-GNOME is marked experimental because Debian documents known compatibility issues between GNOME and OpenRC. It should not be considered a supported release until it passes its own boot and session tests.
+On Debian 13 Trixie, OpenRC manages services and runlevels while `sysvinit-core` provides PID 1; Trixie’s `openrc` package does not include the separate `openrc-init` package. GNOME is marked experimental because Debian documents known compatibility issues between GNOME and OpenRC. It should not be considered a supported release until it passes its own boot and session tests.
 
 See TODO.md for build phases and milestones.
