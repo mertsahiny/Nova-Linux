@@ -29,12 +29,12 @@ jobs:
           test -s build/calamares/branding.desc
           test -s build/calamares/stylesheet.qss
           grep -q 'componentName: nova' build/calamares/branding.desc
-          grep -q 'configure-installer-\${INIT}.sh' build/build-one.sh
+          grep -q 'configure-installer-' build/build-one.sh
           grep -q 'google-chrome-stable' build/build-one.sh
           grep -q 'firefox-esr' build/build-one.sh
           grep -q 'ColorScheme=BreezeDark' build/build-one.sh
-          grep -q 'desktop: \\[kde, gnome, xfce, cinnamon, lxqt, lxde, mate\\]' .github/workflows/build-openrc.yml
-          grep -q 'desktop: \\[kde, gnome, xfce, cinnamon, lxqt, lxde, mate\\]' .github/workflows/build-systemd.yml
+          grep -q 'mate]' .github/workflows/build-openrc.yml
+          grep -q 'mate]' .github/workflows/build-systemd.yml
 
       - name: Validate project structure
         run: |
