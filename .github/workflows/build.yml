@@ -4,6 +4,8 @@ name: NOVA Linux Build
 on:
   push:
     branches: [ main ]
+  pull_request:
+    branches: [ main ]
   workflow_dispatch:
     inputs:
       desktop:
@@ -94,8 +96,8 @@ jobs:
 
           cat "$LOG"
 
-          # Strip ANSI/terminal control sequences before checking systemd
-          # messages; otherwise colour codes split words such as "Reached".
+          # Strip ANSI/terminal control sequences before checking OpenRC
+          # service startup output.
           CLEAN_LOG="$RUNNER_TEMP/nova-qemu-boot-clean.log"
           sed -E 's/\x1B\[[0-9;?]*[ -/]*[@-~]//g' "$LOG" > "$CLEAN_LOG"
 
