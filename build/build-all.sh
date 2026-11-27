@@ -516,7 +516,7 @@ set timeout=5
 set default=0
 
 menuentry "NOVA Linux Live" {
-    linux /live/vmlinuz boot=live components quiet splash username=nova hostname=nova console=tty0 console=ttyS0,115200n8 systemd.show_status=1 systemd.log_target=console
+    linux /live/vmlinuz boot=live components quiet splash username=nova hostname=nova console=tty0 console=ttyS0,115200n8 init=/sbin/openrc-init rw
     initrd /live/initrd.img
 }
 EOF
