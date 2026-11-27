@@ -349,9 +349,12 @@ EOF
     install -D -m 0644 /etc/xdg/plasmarc /etc/skel/.config/plasmarc
     install -D -m 0644 /etc/xdg/plasmarc /home/nova/.config/plasmarc
 fi
-# Some desktop editions (including Cinnamon) do not create this directory.
-mkdir -p /home/nova/.config
-chown -R nova:nova /home/nova/.config
+# Ensure the live user's home and config directories exist for every desktop.
+# Use install -d so ownership is applied at creation time, including on Cinnamon.
+install -d -m 0755 -o nova -g nova /home/nova
+install -d -m 0755 -o nova -g nova /home/nova/.config
+test -d /home/nova/.config
+test "$(stat -c '%U:%G' /home/nova/.config)" = "nova:nova"
 
 echo "==> Configuring Fastfetch"
 
