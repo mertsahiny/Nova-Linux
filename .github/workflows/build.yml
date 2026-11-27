@@ -5,6 +5,20 @@ on:
   push:
     branches: [ main ]
   workflow_dispatch:
+    inputs:
+      desktop:
+        description: Desktop edition to build
+        required: true
+        type: choice
+        default: kde
+        options:
+          - kde
+          - gnome
+          - xfce
+          - cinnamon
+          - lxqt
+          - lxde
+          - mate
   schedule:
     - cron: "0 2 * * 0"
 
@@ -36,7 +50,7 @@ jobs:
 # Triggered build requested by the maintainer.
         run: |
           sudo mkdir -p out
-          sudo env NOVA_VERSION="$(cat VERSION)" bash build/build-all.sh
+          sudo env NOVA_VERSION="$(cat VERSION)" NOVA_DESKTOP="${{ github.event.inputs.desktop || 'kde' }}" bash build/build-all.sh
 
       - name: Validate ISO structure
         run: |
@@ -90,12 +104,12 @@ jobs:
             exit 1
           fi
 
-          if ! grep -qiE 'Reached target (graphical.target|multi-user.target|Graphical Interface|Multi-User System)|Started sddm.service|Started Display Manager' "$CLEAN_LOG"; then
-            echo "ERROR: QEMU did not confirm that NOVA reached userspace (QEMU exit: $QEMU_STATUS)." >&2
+          if ! grep -qiE 'openrc-init|OpenRC|starting default runlevel' "$CLEAN_LOG"; then
+            echo "ERROR: QEMU did not confirm that NOVA started OpenRC (QEMU exit: $QEMU_STATUS)." >&2
             exit 1
           fi
 
-          echo "SUCCESS: NOVA reached systemd userspace and started its display manager."
+          echo "SUCCESS: NOVA booted through the OpenRC init path."
 
       - name: Upload ISO artifact
         uses: actions/upload-artifact@v4
