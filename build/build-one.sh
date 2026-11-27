@@ -349,6 +349,8 @@ EOF
     install -D -m 0644 /etc/xdg/plasmarc /etc/skel/.config/plasmarc
     install -D -m 0644 /etc/xdg/plasmarc /home/nova/.config/plasmarc
 fi
+# Some desktop editions (including Cinnamon) do not create this directory.
+mkdir -p /home/nova/.config
 chown -R nova:nova /home/nova/.config
 
 echo "==> Configuring Fastfetch"
